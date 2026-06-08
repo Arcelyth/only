@@ -13,15 +13,6 @@ EncodingAlias :: struct {
     name:  string,
 }
 
-encoding_aliases :: []EncodingAlias{
-    {"utf-8", "UTF-8"},
-    {"utf8", "UTF-8"},
-    {"utf-16le", "UTF-16LE"},
-    {"utf-16be", "UTF-16BE"},
-    {"shift_jis", "Shift_JIS"},
-    {"big5", "Big5"},
-}
-
 is_html_space :: #force_inline proc(c: u8) -> bool {
 	return c == 0x09 || c == 0x0A || c == 0x0C || c == 0x0D || c == 0x20
 }
