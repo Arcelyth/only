@@ -86,3 +86,35 @@ test_priority_cascade :: proc(t: ^testing.T) {
 	testing.expect_value(t, encoding_sniff(transmute([]byte)clean_payload, opt_e), "Big5")
 }
 
+@(test)
+test_get_attr :: proc(t: ^testing.T) {
+    input := `<meta charset="gbk">`
+    attr, i := get_attr(transmute([]byte)input, 6, len(input))
+    a, ok := attr.?
+    testing.expect(t, ok)
+    testing.expect_value(t, a.name, "charset")
+    testing.expect_value(t, a.value, "gbk")
+    testing.expect_value(t, i, 19)
+}
+
+@(test)
+test_get_attr_unquoted :: proc(t: ^testing.T) {
+    input := `charset=gbk>`
+    attr, i := get_attr(transmute([]byte)input, 0, len(input))
+    a, ok := attr.?
+    testing.expect(t, ok)
+    testing.expect_value(t, a.name, "charset")
+    testing.expect_value(t, a.value, "gbk")
+    testing.expect_value(t, i, 11)
+}
+
+@(test)
+test_get_attr_no_value :: proc(t: ^testing.T) {
+    input := `charset >`
+    attr, i := get_attr(transmute([]byte)input, 0, len(input))
+    a, ok := attr.?
+    testing.expect(t, ok)
+    testing.expect_value(t, a.name, "charset")
+    testing.expect_value(t, a.value, "")
+    testing.expect_value(t, i, 8)
+}

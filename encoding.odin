@@ -8,11 +8,6 @@ Attr :: struct {
 	value: string,
 }
 
-EncodingAlias :: struct {
-    label: string,
-    name:  string,
-}
-
 is_html_space :: #force_inline proc(c: u8) -> bool {
 	return c == 0x09 || c == 0x0A || c == 0x0C || c == 0x0D || c == 0x20
 }
@@ -48,6 +43,7 @@ norm_prescan_encoding :: proc(label: string) -> Maybe(string) {
 	return enc
 }
 
+// https://encoding.spec.whatwg.org/#bom-sniff
 get_bom_encoding :: proc(input: []byte) -> Maybe(string) {
 	if len(input) >= 3 && input[0] == 0xEF && input[1] == 0xBB && input[2] == 0xBF do return "UTF-8"
 	if len(input) >= 2 && input[0] == 0xFF && input[1] == 0xFE do return "UTF-16LE"
@@ -55,87 +51,90 @@ get_bom_encoding :: proc(input: []byte) -> Maybe(string) {
 	return nil
 }
 
+// https://html.spec.whatwg.org/multipage/parsing.html#concept-get-attributes-when-sniffing
 get_attr :: proc(input: []byte, i_: int, l: int) -> (Maybe(Attr), int) {
     i := i_
-	for i < l {
-		c := input[i]
-		if is_html_space(c) || c == 0x2F {
-			i += 1
-			continue
-		}
-		if c == 0x3E do return nil, i
-		break
-	}
 
-	if i >= l do return nil, i
+    for i < l {
+        c := input[i]
+        if is_html_space(c) || c == 0x2F {
+            i += 1 
+            continue
+        } 
+        if c == 0x3E do return nil, i   // '>'
+        break
+    }
+    if i >= l do return nil, i
 
-	name_bytes := make([dynamic]u8, context.temp_allocator)
-	value_bytes := make([dynamic]u8, context.temp_allocator)
+    n_start := i
+    n_end := -1
+    for i < l {
+        c := input[i]
+        if c == 0x3D {  // '='
+            n_end = i 
+            i += 1
+            break
+        }
+        if is_html_space(c) {
+            n_end = i
+            i += 1
+            for i < l {
+                c = input[i]
+                if is_html_space(c) {
+                    i += 1
+                    continue
+                }
+                if c != 0x3D do return Attr{string(input[n_start:n_end]), ""}, i 
+                i += 1
+                break
+            }
+            break
+        }
+        // '/', '>'
+        if c == 0x2F || c == 0x3E {
+            n_end = i
+            return Attr{string(input[n_start:n_end]), ""}, i
+        }
+        i += 1 
+    }
+    if n_end == -1 do n_end = i
+    if n_end < n_start do n_end = n_start
+    for i < l && is_html_space(input[i]) do i += 1
+    if i >= l do return Attr{string(input[n_start:n_end]), ""}, i
 
-	for i < l {
-		c := input[i]
+    v_start := i
+    v_end := -1
 
-		if c == 0x3D && len(name_bytes) > 0 {
-			i += 1
-			break
-		}
+    c := input[i]
+    // quote
+    if c == 0x22 || c == 0x27 {
+        quote := c
+        i += 1
+        v_start = i
+        for i < l {
+            if input[i] == quote {
+                v_end = i
+                i += 1
+                break
+            }
+            i += 1
+        }
+        if v_end == -1 do v_end = i
+    } else if c == 0x3E {   // '>'
+        return Attr{string(input[n_start:n_end]), ""}, i
+    } else {
+        for i < l {
+            c = input[i]
+            if is_html_space(c) || c == 0x3E do break
+            i += 1
+        }
+        v_end = i
+    }
 
-		if is_html_space(c) {
-			i += 1
-			for i < l {
-				c = input[i]
-				if is_html_space(c) {
-					i += 1
-					continue
-				}
-				if c != 0x3D do return Attr{string(name_bytes[:]), ""}, i
-				i += 1
-				break
-			}
-			break
-		}
-
-		if c == 0x2F || c == 0x3E do return Attr{string(name_bytes[:]), ""}, i
-
-        if c >= 'A' && c <= 'Z' do append(&name_bytes, c + 0x20)
-        else do append(&name_bytes, c)
-
-		i += 1
-	}
-
-	for i < l && is_html_space(input[i]) do i += 1
-
-	if i >= l do return Attr{string(name_bytes[:]), ""}, i
-
-	c := input[i]
-	if c == 0x22 || c == 0x27 {
-		quote := c
-		i += 1
-		for i < l {
-			c = input[i]
-			if c == quote {
-				i += 1
-				break
-			}
-
-            append(&value_bytes, c)
-			i += 1
-		}
-	} else if c == 0x3E {
-		return Attr{string(name_bytes[:]), ""}, i
-	} else {
-		for i < l {
-			c = input[i]
-			if is_html_space(c) || c == 0x3E do break
-
-            append(&value_bytes, c)
-			i += 1
-		}
-	}
-
-	return Attr{string(name_bytes[:]), string(value_bytes[:])}, i
+    return Attr{string(input[n_start:n_end]), string(input[v_start:v_end])}, i
 }
 
+// https://html.spec.whatwg.org/#extracting-character-encodings-from-meta-elements
 extract_from_meta :: proc(str: string) -> Maybe(string) {
 	position := 0
 
@@ -155,9 +154,7 @@ extract_from_meta :: proc(str: string) -> Maybe(string) {
 		}
 
 		if index == -1 do return nil
-
 		sub_position := index + 7
-
 		for sub_position < len(str) && is_html_space(str[sub_position]) do sub_position += 1
 		if sub_position >= len(str) || str[sub_position] != '=' {
 			position = index + 7
