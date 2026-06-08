@@ -1,10 +1,25 @@
-// implementation of encoding sniffing algorithm
+// Implementation of encoding sniffing algorithm.
+// https://html.spec.whatwg.org/multipage/parsing.html#encoding-sniffing-algorithm
 
 package only
 
 Attr :: struct {
 	name:  string,
 	value: string,
+}
+
+EncodingAlias :: struct {
+    label: string,
+    name:  string,
+}
+
+encoding_aliases :: []EncodingAlias{
+    {"utf-8", "UTF-8"},
+    {"utf8", "UTF-8"},
+    {"utf-16le", "UTF-16LE"},
+    {"utf-16be", "UTF-16BE"},
+    {"shift_jis", "Shift_JIS"},
+    {"big5", "Big5"},
 }
 
 is_html_space :: #force_inline proc(c: u8) -> bool {
@@ -31,23 +46,6 @@ trim_space :: proc(s: string) -> string {
 	for start < end && is_html_space(s[start]) do start += 1
 	for end > start && is_html_space(s[end-1]) do end -= 1
 	return s[start:end]
-}
-
-// TODO: add more 
-label_to_name :: proc(label: string) -> Maybe(string) {
-	l := trim_space(label)
-	if len(l) == 0 do return nil
-
-	if ascii_eq_ci(l, "utf-8") do return "UTF-8"
-	if ascii_eq_ci(l, "utf8") do return "UTF-8"
-	if ascii_eq_ci(l, "utf-16le") do return "UTF-16LE"
-	if ascii_eq_ci(l, "utf-16be") do return "UTF-16BE"
-	if ascii_eq_ci(l, "windows-1252") do return "windows-1252"
-	if ascii_eq_ci(l, "x-user-defined") do return "x-user-defined"
-	if ascii_eq_ci(l, "big5") do return "Big5"
-	if ascii_eq_ci(l, "shift_jis") do return "Shift_JIS"
-
-	return nil
 }
 
 norm_prescan_encoding :: proc(label: string) -> Maybe(string) {
@@ -381,4 +379,149 @@ encoding_sniff :: proc(input: []byte, opt: EncodingOptions) -> string {
 	if opt.default_encoding != "" do if enc := label_to_name(opt.default_encoding); enc != nil do return enc.?
 
 	return "windows-1252"
+}
+
+norm_label :: proc(label: string, allocator := context.temp_allocator) -> string {
+	cleaned := trim_space(label)
+	if len(cleaned) == 0 do return ""
+	buf := make([]u8, len(cleaned), allocator)
+	for i in 0..<len(cleaned) do buf[i] = ascii_lower(cleaned[i])
+	return string(buf)
+}
+
+// https://encoding.spec.whatwg.org/#names-and-labels
+label_to_name :: proc(label: string) -> Maybe(string) {
+	l := norm_label(label)
+	if len(l) == 0 do return nil
+
+	switch l {
+	// UTF-8
+	case "unicode-1-1-utf-8", "unicode11utf8", "unicode20utf8", "utf-8", "utf8", "x-unicode20utf8":
+		return "UTF-8"
+
+	// Legacy single-byte encodings
+	case "866", "cp866", "csibm866", "ibm866":
+		return "IBM866"
+
+	case "csisolatin2", "iso-8859-2", "iso-ir-101", "iso8859-2", "iso88592", "iso_8859-2", "iso_8859-2:1987", "l2", "latin2":
+		return "ISO-8859-2"
+
+	case "csisolatin3", "iso-8859-3", "iso-ir-109", "iso8859-3", "iso88593", "iso_8859-3", "iso_8859-3:1988", "l3", "latin3":
+		return "ISO-8859-3"
+
+	case "csisolatin4", "iso-8859-4", "iso-ir-110", "iso8859-4", "iso88594", "iso_8859-4", "iso_8859-4:1988", "l4", "latin4":
+		return "ISO-8859-4"
+
+	case "csisolatincyrillic", "cyrillic", "iso-8859-5", "iso-ir-144", "iso8859-5", "iso88595", "iso_8859-5", "iso_8859-5:1988":
+		return "ISO-8859-5"
+
+	case "arabic", "asmo-708", "csiso88596e", "csiso88596i", "csisolatinarabic", "ecma-114", "iso-8859-6", "iso-8859-6-e", "iso-8859-6-i", "iso-ir-127", "iso8859-6", "iso88596", "iso_8859-6", "iso_8859-6:1987":
+		return "ISO-8859-6"
+
+	case "csisolatingreek", "ecma-118", "elot_928", "greek", "greek8", "iso-8859-7", "iso-ir-126", "iso8859-7", "iso88597", "iso_8859-7", "iso_8859-7:1987", "sun_eu_greek":
+		return "ISO-8859-7"
+
+	case "csiso88598e", "csisolatinhebrew", "hebrew", "iso-8859-8", "iso-8859-8-e", "iso-ir-138", "iso8859-8", "iso88598", "iso_8859-8", "iso_8859-8:1988", "visual":
+		return "ISO-8859-8"
+
+	case "csiso88598i", "iso-8859-8-i", "logical":
+		return "ISO-8859-8-I"
+
+	case "csisolatin6", "iso-8859-10", "iso-ir-157", "iso8859-10", "iso885910", "l6", "latin6":
+		return "ISO-8859-10"
+
+	case "iso-8859-13", "iso8859-13", "iso885913":
+		return "ISO-8859-13"
+
+	case "iso-8859-14", "iso8859-14", "iso885914":
+		return "ISO-8859-14"
+
+	case "csisolatin9", "iso-8859-15", "iso8859-15", "iso885915", "iso_8859-15", "l9":
+		return "ISO-8859-15"
+
+	case "iso-8859-16":
+		return "ISO-8859-16"
+
+	case "cskoi8r", "koi", "koi8", "koi8-r", "koi8_r":
+		return "KOI8-R"
+
+	case "koi8-ru", "koi8-u":
+		return "KOI8-U"
+
+	case "csmacintosh", "mac", "macintosh", "x-mac-roman":
+		return "macintosh"
+
+	case "dos-874", "iso-8859-11", "iso8859-11", "iso885911", "tis-620", "windows-874":
+		return "windows-874"
+
+	case "cp1250", "windows-1250", "x-cp1250":
+		return "windows-1250"
+
+	case "cp1251", "windows-1251", "x-cp1251":
+		return "windows-1251"
+
+	case "ansi_x3.4-1968", "ascii", "cp1252", "cp819", "csisolatin1", "ibm819", "iso-8859-1", "iso-ir-100", "iso8859-1", "iso88591", "iso_8859-1", "iso_8859-1:1987", "l1", "latin1", "us-ascii", "windows-1252", "x-cp1252":
+		return "windows-1252"
+
+	case "cp1253", "windows-1253", "x-cp1253":
+		return "windows-1253"
+
+	case "cp1254", "csisolatin5", "iso-8859-9", "iso-ir-148", "iso8859-9", "iso88599", "iso_8859-9", "iso_8859-9:1989", "l5", "latin5", "windows-1254", "x-cp1254":
+		return "windows-1254"
+
+	case "cp1255", "windows-1255", "x-cp1255":
+		return "windows-1255"
+
+	case "cp1256", "windows-1256", "x-cp1256":
+		return "windows-1256"
+
+	case "cp1257", "windows-1257", "x-cp1257":
+		return "windows-1257"
+
+	case "cp1258", "windows-1258", "x-cp1258":
+		return "windows-1258"
+
+	case "x-mac-cyrillic", "x-mac-ukrainian":
+		return "x-mac-cyrillic"
+
+	// Legacy multi-byte Chinese (simplified)
+	case "chinese", "csgb2312", "csiso58gb231280", "gb2312", "gb_2312", "gb_2312-80", "gbk", "iso-ir-58", "x-gbk":
+		return "GBK"
+
+	case "gb18030":
+		return "gb18030"
+
+	// Legacy multi-byte Chinese (traditional)
+	case "big5", "big5-hkscs", "cn-big5", "csbig5", "x-x-big5":
+		return "Big5"
+
+	// Legacy multi-byte Japanese
+	case "cseucpkdfmtjapanese", "euc-jp", "x-euc-jp":
+		return "EUC-JP"
+
+	case "csiso2022jp", "iso-2022-jp":
+		return "ISO-2022-JP"
+
+	case "csshiftjis", "ms932", "ms_kanji", "shift-jis", "shift_jis", "sjis", "windows-31j", "x-sjis":
+		return "Shift_JIS"
+
+	// Legacy multi-byte Korean
+	case "cseuckr", "csksc56011987", "euc-kr", "iso-ir-149", "korean", "ks_c_5601-1987", "ks_c_5601-1989", "ksc5601", "ksc_5601", "windows-949":
+		return "EUC-KR"
+
+	// Legacy miscellaneous
+	case "csiso2022kr", "hz-gb-2312", "iso-2022-cn", "iso-2022-cn-ext", "iso-2022-kr", "replacement":
+		return "replacement"
+
+	case "unicodefffe", "utf-16be":
+		return "UTF-16BE"
+
+	case "csunicode", "iso-10646-ucs-2", "ucs-2", "unicode", "unicodefeff", "utf-16", "utf-16le":
+		return "UTF-16LE"
+
+	case "x-user-defined":
+		return "x-user-defined"
+	}
+
+	return nil
 }
