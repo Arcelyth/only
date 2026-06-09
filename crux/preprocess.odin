@@ -2,7 +2,7 @@ package crux
 
 import "core:strings"
 
-ParseErrorProc :: proc(err: ParseError, c: rune)
+ParseErrorProc :: #type proc(err: ParseError, c: rune)
 
 ParseError :: enum {
     SurrogateInInputStream,
