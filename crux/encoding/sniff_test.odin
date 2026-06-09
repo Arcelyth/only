@@ -1,4 +1,4 @@
-package crux
+package encoding
 
 import "core:testing"
 import "core:fmt"

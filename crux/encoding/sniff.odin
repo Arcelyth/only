@@ -1,7 +1,7 @@
 // Implementation of encoding sniffing algorithm.
 // https://html.spec.whatwg.org/multipage/parsing.html#encoding-sniffing-algorithm
 
-package crux
+package encoding
 
 Attr :: struct {
 	name:  string,
