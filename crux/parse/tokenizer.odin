@@ -20,13 +20,13 @@ Attribute :: struct {
 Start_Token :: struct {
     tag_name: string,
     self_closing: bool,
-    attrs: []Attribute,
+    attrs: [dynamic]Attribute,
 }
 
 End_Token :: struct {
     tag_name: string,
     self_closing: bool,
-    attrs: []Attribute,
+    attrs: [dynamic]Attribute,
 }
 
 Comment_Token :: struct {
@@ -149,8 +149,13 @@ Tokenizer :: struct {
 	on_error: ParseErrorProc,
     current_token: Token, 
     tag_name_builder: strings.Builder, 
+    // temporary buffer
     temp_buffer: strings.Builder,
     last_start_tag_name: string,
+    current_attr_name: strings.Builder,
+    current_attr_value: strings.Builder,
+    current_attr_dup: bool,
+    has_current_attr: bool,
 }
 
 new_tokenizer :: proc(input: ^InputStream, on_error: ParseErrorProc = nil) -> Tokenizer {
@@ -176,11 +181,11 @@ emit_comment :: proc(str: string) {
     emit(Comment_Token{str})
 }
 
-emit_start :: proc(tag_name: string, self_closing: bool, attrs: []Attribute) {
+emit_start :: proc(tag_name: string, self_closing: bool, attrs: [dynamic]Attribute) {
     emit(Start_Token{tag_name, self_closing, attrs})
 }
 
-emit_end :: proc(tag_name: string, self_closing: bool, attrs: []Attribute) {
+emit_end :: proc(tag_name: string, self_closing: bool, attrs: [dynamic]Attribute) {
     emit(End_Token{tag_name, self_closing, attrs})
 }
 
@@ -200,6 +205,7 @@ emit_temp_buffer :: proc(t: ^Tokenizer) {
 }
 
 emit_current_tag :: proc(t: ^Tokenizer) {
+    flush_current_attribute(t)
 	final_str := strings.to_string(t.tag_name_builder)
 
 	#partial switch &tok in t.current_token {
@@ -254,6 +260,67 @@ is_appropriate_end_tag :: proc(t: ^Tokenizer) -> bool {
 		return current_name == t.last_start_tag_name
 	case:
 		return false
+	}
+}
+
+// ----- attr
+flush_current_attribute :: proc(t: ^Tokenizer) {
+	if !t.has_current_attr do return
+	if !t.current_attr_dup {
+		attr := Attribute{
+			name = strings.clone(strings.to_string(t.current_attr_name)),
+			value = strings.clone(strings.to_string(t.current_attr_value)),
+		}
+
+		#partial switch &tok in t.current_token {
+		case Start_Token: append(&tok.attrs, attr)
+		case End_Token: append(&tok.attrs, attr)
+		}
+	}
+
+	t.has_current_attr = false
+}
+
+start_new_attribute :: proc(t: ^Tokenizer) {
+	flush_current_attribute(t)
+
+	strings.builder_reset(&t.current_attr_name)
+	strings.builder_reset(&t.current_attr_value)
+	t.current_attr_dup = false
+	t.has_current_attr = true
+}
+
+append_to_attribute_name :: proc(t: ^Tokenizer, c: rune) {
+	strings.write_rune(&t.current_attr_name, c)
+}
+
+append_to_attribute_value :: proc(t: ^Tokenizer, c: rune) {
+	strings.write_rune(&t.current_attr_value, c)
+}
+
+leave_attribute_name :: proc(t: ^Tokenizer) {
+	if !t.has_current_attr do return
+
+	name := strings.to_string(t.current_attr_name)
+	is_dup := false
+
+	#partial switch &tok in t.current_token {
+	case Start_Token:
+		for attr in tok.attrs do if attr.name == name do is_dup = true
+	case End_Token:
+		for attr in tok.attrs do if attr.name == name do is_dup = true
+	}
+
+	if is_dup {
+		if t.on_error != nil do t.on_error(.DuplicateAttribute, 0)
+		t.current_attr_dup = true
+	}
+}
+
+set_self_closing_flag :: proc(t: ^Tokenizer) {
+	#partial switch &tok in t.current_token {
+	case Start_Token: tok.self_closing = true
+	case End_Token: tok.self_closing = true
 	}
 }
 
@@ -1038,6 +1105,239 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case:
 			reconsume(t.input)
 			t.state = .ScriptDataDoubleEscaped
+		}
+
+    // https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escape-end-state
+	case .ScriptDataDoubleEscapeEnd:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .ScriptDataDoubleEscaped
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ', '/', '>':
+			if strings.to_string(t.temp_buffer) == "script" {
+				t.state = .ScriptDataEscaped
+			} else {
+				t.state = .ScriptDataDoubleEscaped
+			}
+			emit_char(c)
+		case:
+			if utils.is_ascii_upper_alpha(c) {
+				append_to_temp_buffer(t, c + 0x0020)
+				emit_char(c)
+			} else if utils.is_ascii_lower_alpha(c) {
+				append_to_temp_buffer(t, c)
+				emit_char(c)
+			} else {
+				reconsume(t.input)
+				t.state = .ScriptDataDoubleEscaped
+			}
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-name-state
+	case .BeforeAttributeName:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .AfterAttributeName
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ':
+			// Ignore
+		case '/', '>':
+			reconsume(t.input)
+			t.state = .AfterAttributeName
+		case '=':
+			if t.on_error != nil do t.on_error(.UnexpectedEqualsSignBeforeAttributeName, c)
+			start_new_attribute(t)
+			append_to_attribute_name(t, '=')
+			t.state = .AttributeName
+		case:
+			start_new_attribute(t)
+			reconsume(t.input)
+			t.state = .AttributeName
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#attribute-name-state
+	case .AttributeName:
+		if is_eof {
+			leave_attribute_name(t)
+			reconsume(t.input)
+			t.state = .AfterAttributeName
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ', '/', '>':
+			leave_attribute_name(t)
+			reconsume(t.input)
+			t.state = .AfterAttributeName
+		case '=':
+			leave_attribute_name(t)
+			t.state = .BeforeAttributeValue
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_attribute_name(t, '\uFFFD')
+		case '"', '\'', '<':
+			if t.on_error != nil do t.on_error(.UnexpectedCharacterInAttributeName, c)
+			append_to_attribute_name(t, c)
+		case:
+			if utils.is_ascii_upper_alpha(c) {
+				append_to_attribute_name(t, c + 0x0020)
+			} else {
+				append_to_attribute_name(t, c)
+			}
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-name-state
+	case .AfterAttributeName:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInTag, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ':
+			// Ignore
+		case '/':
+			t.state = .SelfClosingStartTag
+		case '=':
+			t.state = .BeforeAttributeValue
+		case '>':
+			t.state = .Data
+			emit_current_tag(t)
+		case:
+			start_new_attribute(t)
+			reconsume(t.input)
+			t.state = .AttributeName
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-value-state
+	case .BeforeAttributeValue:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .AttributeValueUnquoted
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ':
+			// Ignore
+		case '"':
+			t.state = .AttributeValueDoubleQuoted
+		case '\'':
+			t.state = .AttributeValueSingleQuoted
+		case '>':
+			if t.on_error != nil do t.on_error(.MissingAttributeValue, c)
+			t.state = .Data
+			emit_current_tag(t)
+		case:
+			reconsume(t.input)
+			t.state = .AttributeValueUnquoted
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-double-quoted-state
+	case .AttributeValueDoubleQuoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInTag, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '"':
+			t.state = .AfterAttributeValueQuoted
+		case '&':
+			t.return_state = .AttributeValueDoubleQuoted
+			t.state = .CharacterReference
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_attribute_value(t, '\uFFFD')
+		case:
+			append_to_attribute_value(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-single-quoted-state
+	case .AttributeValueSingleQuoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInTag, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\'':
+			t.state = .AfterAttributeValueQuoted
+		case '&':
+			t.return_state = .AttributeValueSingleQuoted
+			t.state = .CharacterReference
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_attribute_value(t, '\uFFFD')
+		case:
+			append_to_attribute_value(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-unquoted-state
+	case .AttributeValueUnquoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInTag, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ':
+			t.state = .BeforeAttributeName
+		case '&':
+			t.return_state = .AttributeValueUnquoted
+			t.state = .CharacterReference
+		case '>':
+			t.state = .Data
+			emit_current_tag(t)
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_attribute_value(t, '\uFFFD')
+		case '"', '\'', '<', '=', '`':
+			if t.on_error != nil do t.on_error(.UnexpectedCharacterInUnquotedAttributeValue, c)
+			append_to_attribute_value(t, c)
+		case:
+			append_to_attribute_value(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-value-quoted-state
+	case .AfterAttributeValueQuoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInTag, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ':
+			t.state = .BeforeAttributeName
+		case '/':
+			t.state = .SelfClosingStartTag
+		case '>':
+			t.state = .Data
+			emit_current_tag(t)
+		case:
+			if t.on_error != nil do t.on_error(.MissingWhitespaceBetweenAttributes, c)
+			reconsume(t.input)
+			t.state = .BeforeAttributeName
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#self-closing-start-tag-state
+	case .SelfClosingStartTag:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInTag, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '>':
+			set_self_closing_flag(t)
+			t.state = .Data
+			emit_current_tag(t)
+		case:
+			if t.on_error != nil do t.on_error(.UnexpectedSolidusInTag, c)
+			reconsume(t.input)
+			t.state = .BeforeAttributeName
 		}
     }
 }

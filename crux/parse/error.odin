@@ -12,7 +12,14 @@ ParseError :: enum {
     InvalidFirstCharacterOfTagName,
     MissingEndTagName,
     EofInTag,
-    EofInScriptHtmlCommentLikeText
+    EofInScriptHtmlCommentLikeText,
+    UnexpectedEqualsSignBeforeAttributeName,
+    UnexpectedCharacterInAttributeName,
+    MissingAttributeValue,
+    MissingWhitespaceBetweenAttributes,
+    UnexpectedSolidusInTag,
+    DuplicateAttribute,
+    UnexpectedCharacterInUnquotedAttributeValue,
 }
 
 
