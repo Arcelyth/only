@@ -1,4 +1,4 @@
-package only
+package crux
 
 main :: proc() {
 

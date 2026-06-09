@@ -1,7 +1,5 @@
 package encoding
 
-import "core:strings"
-
 EncodingChangeResult :: enum {
 	NoChange,
 	ChangedOnTheFly,

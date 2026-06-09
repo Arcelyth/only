@@ -1,7 +1,6 @@
 package encoding
 
 import "core:testing"
-import "core:fmt"
 
 expect_sniff :: proc(t: ^testing.T, input: string, opt: EncodingOptions, expected: string, loc := #caller_location) {
 	res, _ := encoding_sniff(transmute([]byte)input, opt)
