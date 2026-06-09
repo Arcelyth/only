@@ -1,11 +1,16 @@
 // Implementation of encoding sniffing algorithm.
 // https://html.spec.whatwg.org/multipage/parsing.html#encoding-sniffing-algorithm
 
-package only
+package crux
 
 Attr :: struct {
 	name:  string,
 	value: string,
+}
+
+Confidence :: enum {
+    Certain,
+    Tentative
 }
 
 is_html_space :: #force_inline proc(c: u8) -> bool {
@@ -340,33 +345,33 @@ EncodingOptions :: struct {
 	same_origin_with_parent: bool,
 }
 
-encoding_sniff :: proc(input: []byte, opt: EncodingOptions) -> string {
+encoding_sniff :: proc(input: []byte, opt: EncodingOptions) -> (string, Confidence) {
 	// BOM
-	if enc := get_bom_encoding(input); enc != nil do return enc.?
+	if enc := get_bom_encoding(input); enc != nil do return enc.?, .Certain
 
 	// user override
-	if opt.override_encoding != "" do if enc := label_to_name(opt.override_encoding); enc != nil do return enc.?
+	if opt.override_encoding != "" do if enc := label_to_name(opt.override_encoding); enc != nil do return enc.?, .Certain
 
 	// transport layer
-	if opt.transport_encoding != "" do if enc := label_to_name(opt.transport_encoding); enc != nil do return enc.?
+	if opt.transport_encoding != "" do if enc := label_to_name(opt.transport_encoding); enc != nil do return enc.?, .Certain
 
 	// prescan
-	if enc := prescan(input); enc != nil do return enc.?
+	if enc := prescan(input); enc != nil do return enc.?, .Tentative
 
 	// same-origin parent
 	if opt.same_origin_with_parent && 
         opt.parent_encoding != "" && 
         !is_utf16_family(opt.parent_encoding) {
-        if enc := label_to_name(opt.parent_encoding); enc != nil do return enc.?
+        if enc := label_to_name(opt.parent_encoding); enc != nil do return enc.?, .Tentative
     }
 
 	// likely encoding
-	if opt.likely_encoding != "" do if enc := label_to_name(opt.likely_encoding); enc != nil do return enc.?
+	if opt.likely_encoding != "" do if enc := label_to_name(opt.likely_encoding); enc != nil do return enc.?, .Tentative 
 
 	// default
-	if opt.default_encoding != "" do if enc := label_to_name(opt.default_encoding); enc != nil do return enc.?
+	if opt.default_encoding != "" do if enc := label_to_name(opt.default_encoding); enc != nil do return enc.?, .Tentative
 
-	return "windows-1252"
+	return "windows-1252", .Tentative
 }
 
 norm_label :: proc(label: string, allocator := context.temp_allocator) -> string {

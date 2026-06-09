@@ -1,10 +1,10 @@
-package only
+package crux
 
 import "core:testing"
 import "core:fmt"
 
 expect_sniff :: proc(t: ^testing.T, input: string, opt: EncodingOptions, expected: string, loc := #caller_location) {
-	res := encoding_sniff(transmute([]byte)input, opt)
+	res, _ := encoding_sniff(transmute([]byte)input, opt)
 	testing.expect_value(t, res, expected, loc)
 }
 
@@ -61,29 +61,34 @@ test_priority_cascade :: proc(t: ^testing.T) {
 		override_encoding  = "big5",
 		transport_encoding = "shift_jis",
 	}
-	testing.expect_value(t, encoding_sniff(transmute([]byte)payload, opt_a), "UTF-8")
+    enc, _ := encoding_sniff(transmute([]byte)payload, opt_a)
+	testing.expect_value(t, enc, "UTF-8")
 
 	no_bom_payload := "<meta charset='gbk'>"
 	opt_b := EncodingOptions{
 		override_encoding  = "big5",
 		transport_encoding = "shift_jis",
 	}
-	testing.expect_value(t, encoding_sniff(transmute([]byte)no_bom_payload, opt_b), "Big5")
+    enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_b)
+	testing.expect_value(t, enc, "Big5")
 
 	opt_c := EncodingOptions{
 		transport_encoding = "shift_jis",
 	}
-	testing.expect_value(t, encoding_sniff(transmute([]byte)no_bom_payload, opt_c), "Shift_JIS")
+    enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_c)
+	testing.expect_value(t, enc, "Shift_JIS")
 
 	opt_d := EncodingOptions{}
-	testing.expect_value(t, encoding_sniff(transmute([]byte)no_bom_payload, opt_d), "GBK")
+    enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_d)
+	testing.expect_value(t, enc, "GBK")
 
 	clean_payload := "<html>No Tags</html>"
 	opt_e := EncodingOptions{
 		same_origin_with_parent = true,
 		parent_encoding         = "big5",
 	}
-	testing.expect_value(t, encoding_sniff(transmute([]byte)clean_payload, opt_e), "Big5")
+    enc, _ = encoding_sniff(transmute([]byte)clean_payload, opt_e)
+	testing.expect_value(t, enc, "Big5")
 }
 
 @(test)
