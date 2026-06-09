@@ -776,6 +776,269 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case:
 			emit_char(c)
 		}
+        
+    // https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-dash-state
+	case .ScriptDataEscapedDash:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInScriptHtmlCommentLikeText, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .ScriptDataEscapedDashDash
+			emit_char('-')
+		case '<':
+			t.state = .ScriptDataEscapedLessThanSign
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			t.state = .ScriptDataEscaped
+			emit_char('\uFFFD')
+		case:
+			t.state = .ScriptDataEscaped
+			emit_char(c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-dash-dash-state
+	case .ScriptDataEscapedDashDash:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInScriptHtmlCommentLikeText, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			emit_char('-')
+		case '<':
+			t.state = .ScriptDataEscapedLessThanSign
+		case '>':
+			t.state = .ScriptData
+			emit_char('>')
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			t.state = .ScriptDataEscaped
+			emit_char('\uFFFD')
+		case:
+			t.state = .ScriptDataEscaped
+			emit_char(c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-less-than-sign-state
+	case .ScriptDataEscapedLessThanSign:
+		if is_eof {
+			emit_char('<')
+			t.state = .ScriptDataEscaped
+			reconsume(t.input)
+			return
+		}
+		switch c {
+		case '/':
+			clear_temp_buffer(t)
+			t.state = .ScriptDataEscapedEndTagOpen
+		case:
+			if utils.is_ascii_alpha(c) {
+				clear_temp_buffer(t)
+				emit_char('<')
+				reconsume(t.input)
+				t.state = .ScriptDataDoubleEscapeStart
+			} else {
+				emit_char('<')
+				reconsume(t.input)
+				t.state = .ScriptDataEscaped
+			}
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-end-tag-open-state
+	case .ScriptDataEscapedEndTagOpen:
+		if is_eof {
+			emit_char('<')
+			emit_char('/')
+			t.state = .ScriptDataEscaped
+			reconsume(t.input)
+			return
+		}
+		if utils.is_ascii_alpha(c) {
+			create_end_tag(t, "")
+			reconsume(t.input)
+			t.state = .ScriptDataEscapedEndTagName
+		} else {
+			emit_char('<')
+			emit_char('/')
+			reconsume(t.input)
+			t.state = .ScriptDataEscaped
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-end-tag-name-state
+	case .ScriptDataEscapedEndTagName:
+		if is_eof {
+			emit_char('<')
+			emit_char('/')
+			emit_temp_buffer(t)
+			t.state = .ScriptDataEscaped
+			reconsume(t.input)
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ':
+			if is_appropriate_end_tag(t) {
+				t.state = .BeforeAttributeName
+			} else {
+				emit_char('<')
+				emit_char('/')
+				emit_temp_buffer(t)
+				t.state = .ScriptDataEscaped
+				reconsume(t.input)
+			}
+		case '/':
+			if is_appropriate_end_tag(t) {
+				t.state = .SelfClosingStartTag
+			} else {
+				emit_char('<')
+				emit_char('/')
+				emit_temp_buffer(t)
+				t.state = .ScriptDataEscaped
+				reconsume(t.input)
+			}
+		case '>':
+			if is_appropriate_end_tag(t) {
+				t.state = .Data
+				emit_current_tag(t)
+			} else {
+				emit_char('<')
+				emit_char('/')
+				emit_temp_buffer(t)
+				t.state = .ScriptDataEscaped
+				reconsume(t.input)
+			}
+		case:
+			if utils.is_ascii_upper_alpha(c) {
+				append_to_tag_name(t, c + 0x0020)
+				append_to_temp_buffer(t, c)
+			} else if utils.is_ascii_lower_alpha(c) {
+				append_to_tag_name(t, c)
+				append_to_temp_buffer(t, c)
+			} else {
+				emit_char('<')
+				emit_char('/')
+				emit_temp_buffer(t)
+				t.state = .ScriptDataEscaped
+				reconsume(t.input)
+			}
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escape-start-state
+	case .ScriptDataDoubleEscapeStart:
+		if is_eof {
+			t.state = .ScriptDataEscaped
+			reconsume(t.input)
+			return
+		}
+		switch c {
+		case '\t', '\n', '\x0C', ' ', '/', '>':
+			if strings.to_string(t.temp_buffer) == "script" {
+				t.state = .ScriptDataDoubleEscaped
+			} else {
+				t.state = .ScriptDataEscaped
+			}
+			emit_char(c)
+		case:
+			if utils.is_ascii_upper_alpha(c) {
+				append_to_temp_buffer(t, c + 0x0020)
+				emit_char(c)
+			} else if utils.is_ascii_lower_alpha(c) {
+				append_to_temp_buffer(t, c)
+				emit_char(c)
+			} else {
+				reconsume(t.input)
+				t.state = .ScriptDataEscaped
+			}
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-state
+	case .ScriptDataDoubleEscaped:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInScriptHtmlCommentLikeText, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .ScriptDataDoubleEscapedDash
+			emit_char('-')
+		case '<':
+			t.state = .ScriptDataDoubleEscapedLessThanSign
+			emit_char('<')
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			emit_char('\uFFFD')
+		case:
+			emit_char(c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-dash-state
+	case .ScriptDataDoubleEscapedDash:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInScriptHtmlCommentLikeText, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .ScriptDataDoubleEscapedDashDash
+			emit_char('-')
+		case '<':
+			t.state = .ScriptDataDoubleEscapedLessThanSign
+			emit_char('<')
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			t.state = .ScriptDataDoubleEscaped
+			emit_char('\uFFFD')
+		case:
+			t.state = .ScriptDataDoubleEscaped
+			emit_char(c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-dash-dash-state
+	case .ScriptDataDoubleEscapedDashDash:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInScriptHtmlCommentLikeText, c)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			emit_char('-')
+		case '<':
+			t.state = .ScriptDataDoubleEscapedLessThanSign
+			emit_char('<')
+		case '>':
+			t.state = .ScriptData
+			emit_char('>')
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			t.state = .ScriptDataDoubleEscaped
+			emit_char('\uFFFD')
+		case:
+			t.state = .ScriptDataDoubleEscaped
+			emit_char(c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-less-than-sign-state
+	case .ScriptDataDoubleEscapedLessThanSign:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .ScriptDataDoubleEscaped
+			return
+		}
+		switch c {
+		case '/':
+			clear_temp_buffer(t)
+			t.state = .ScriptDataDoubleEscapeEnd
+			emit_char('/')
+		case:
+			reconsume(t.input)
+			t.state = .ScriptDataDoubleEscaped
+		}
     }
 }
 
