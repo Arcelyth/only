@@ -1,14 +1,6 @@
-package crux
+package parse
 
 import "core:strings"
-
-ParseErrorProc :: #type proc(err: ParseError, c: rune)
-
-ParseError :: enum {
-    SurrogateInInputStream,
-    NoncharacterInInputStream,
-    ControlCharacterInInputStream
-}
 
 // https://infra.spec.whatwg.org/#surrogate
 is_surrogate :: proc(c: rune) -> bool {

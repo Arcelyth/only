@@ -1,4 +1,4 @@
-package crux
+package parse
 
 InputStream :: struct {
     content: [dynamic]rune,

@@ -1,4 +1,4 @@
-package crux
+package parse
 
 import "core:testing"
 import "core:unicode/utf8"

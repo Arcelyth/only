@@ -1,5 +1,7 @@
 package encoding
 
+import "../utils"
+
 EncodingChangeResult :: enum {
 	NoChange,
 	ChangedOnTheFly,
@@ -9,10 +11,10 @@ EncodingChangeResult :: enum {
 }
 
 norm_for_change :: proc(enc: string) -> string {
-	if ascii_eq_ci(enc, "UTF-16LE") || ascii_eq_ci(enc, "UTF-16BE") {
+	if utils.ascii_eq_ci(enc, "UTF-16LE") || utils.ascii_eq_ci(enc, "UTF-16BE") {
 		return "UTF-8"
 	}
-	if ascii_eq_ci(enc, "x-user-defined") {
+	if utils.ascii_eq_ci(enc, "x-user-defined") {
 		return "windows-1252"
 	}
 	return enc
@@ -62,7 +64,7 @@ ChangeEncodingParams :: struct {
 
 // https://html.spec.whatwg.org/multipage/parsing.html#changing-the-encoding-while-parsing
 change_encoding :: proc(p: ChangeEncodingParams) -> EncodingChangeResult {
-	if ascii_eq_ci(p.old_enc^, "UTF-16LE") || ascii_eq_ci(p.old_enc^, "UTF-16BE") {
+	if utils.ascii_eq_ci(p.old_enc^, "UTF-16LE") || utils.ascii_eq_ci(p.old_enc^, "UTF-16BE") {
 		p.confidence^ = .Certain
 		return .NoChange
 	}
@@ -75,7 +77,7 @@ change_encoding :: proc(p: ChangeEncodingParams) -> EncodingChangeResult {
 	}
 
 	old_norm := norm_for_change(p.old_enc^)
-	if ascii_eq_ci(old_norm, new_enc) {
+	if utils.ascii_eq_ci(old_norm, new_enc) {
 		p.confidence^ = .Certain
 		return .NoChange
 	}
@@ -99,7 +101,7 @@ change_encoding :: proc(p: ChangeEncodingParams) -> EncodingChangeResult {
 		return .RestartedFromMemory
 	}
 
-    if !ascii_eq_ci(p.request_method, "GET") {
+    if !utils.ascii_eq_ci(p.request_method, "GET") {
 		p.confidence^ = .Certain
 		return .IgnoredNewEncoding
 	}

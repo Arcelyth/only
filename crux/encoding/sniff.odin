@@ -2,6 +2,7 @@
 // https://html.spec.whatwg.org/multipage/parsing.html#encoding-sniffing-algorithm
 
 package encoding
+import "../utils"
 
 Attr :: struct {
 	name:  string,
@@ -13,38 +14,12 @@ Confidence :: enum {
     Tentative
 }
 
-is_html_space :: #force_inline proc(c: u8) -> bool {
-	return c == 0x09 || c == 0x0A || c == 0x0C || c == 0x0D || c == 0x20
-}
-
-ascii_lower :: #force_inline proc(c: u8) -> u8 {
-	if c >= 'A' && c <= 'Z' do return c + 0x20
-	return c
-}
-
-ascii_eq_ci :: proc(a, b: string) -> bool {
-	if len(a) != len(b) do return false
-	for i in 0..<len(a) {
-		if ascii_lower(a[i]) != ascii_lower(b[i]) do return false
-	}
-	return true
-}
-
-trim_space :: proc(s: string) -> string {
-	start := 0
-	end := len(s)
-
-	for start < end && is_html_space(s[start]) do start += 1
-	for end > start && is_html_space(s[end-1]) do end -= 1
-	return s[start:end]
-}
-
 norm_prescan_encoding :: proc(label: string) -> Maybe(string) {
 	enc, ok := label_to_name(label).?
 	if !ok do return nil
 
-	if ascii_eq_ci(enc, "UTF-16LE") || ascii_eq_ci(enc, "UTF-16BE") do return "UTF-8"
-	if ascii_eq_ci(enc, "x-user-defined") do return "windows-1252"
+	if utils.ascii_eq_ci(enc, "UTF-16LE") || utils.ascii_eq_ci(enc, "UTF-16BE") do return "UTF-8"
+	if utils.ascii_eq_ci(enc, "x-user-defined") do return "windows-1252"
 	return enc
 }
 
@@ -62,7 +37,7 @@ get_attr :: proc(input: []byte, i_: int, l: int) -> (Maybe(Attr), int) {
 
     for i < l {
         c := input[i]
-        if is_html_space(c) || c == 0x2F {
+        if utils.is_html_space(c) || c == 0x2F {
             i += 1 
             continue
         } 
@@ -80,12 +55,12 @@ get_attr :: proc(input: []byte, i_: int, l: int) -> (Maybe(Attr), int) {
             i += 1
             break
         }
-        if is_html_space(c) {
+        if utils.is_html_space(c) {
             n_end = i
             i += 1
             for i < l {
                 c = input[i]
-                if is_html_space(c) {
+                if utils.is_html_space(c) {
                     i += 1
                     continue
                 }
@@ -104,7 +79,7 @@ get_attr :: proc(input: []byte, i_: int, l: int) -> (Maybe(Attr), int) {
     }
     if n_end == -1 do n_end = i
     if n_end < n_start do n_end = n_start
-    for i < l && is_html_space(input[i]) do i += 1
+    for i < l && utils.is_html_space(input[i]) do i += 1
     if i >= l do return Attr{string(input[n_start:n_end]), ""}, i
 
     v_start := i
@@ -130,7 +105,7 @@ get_attr :: proc(input: []byte, i_: int, l: int) -> (Maybe(Attr), int) {
     } else {
         for i < l {
             c = input[i]
-            if is_html_space(c) || c == 0x3E do break
+            if utils.is_html_space(c) || c == 0x3E do break
             i += 1
         }
         v_end = i
@@ -146,13 +121,13 @@ extract_from_meta :: proc(str: string) -> Maybe(string) {
 	for {
 		index := -1
 		for i := position; i <= len(str)-7; i += 1 {
-			if (ascii_lower(str[i]) == 'c') &&
-				(ascii_lower(str[i+1]) == 'h') &&
-				(ascii_lower(str[i+2]) == 'a') &&
-				(ascii_lower(str[i+3]) == 'r') &&
-				(ascii_lower(str[i+4]) == 's') &&
-				(ascii_lower(str[i+5]) == 'e') &&
-				(ascii_lower(str[i+6]) == 't') {
+			if (utils.ascii_lower(str[i]) == 'c') &&
+				(utils.ascii_lower(str[i+1]) == 'h') &&
+				(utils.ascii_lower(str[i+2]) == 'a') &&
+				(utils.ascii_lower(str[i+3]) == 'r') &&
+				(utils.ascii_lower(str[i+4]) == 's') &&
+				(utils.ascii_lower(str[i+5]) == 'e') &&
+				(utils.ascii_lower(str[i+6]) == 't') {
 				index = i
 				break
 			}
@@ -160,14 +135,14 @@ extract_from_meta :: proc(str: string) -> Maybe(string) {
 
 		if index == -1 do return nil
 		sub_position := index + 7
-		for sub_position < len(str) && is_html_space(str[sub_position]) do sub_position += 1
+		for sub_position < len(str) && utils.is_html_space(str[sub_position]) do sub_position += 1
 		if sub_position >= len(str) || str[sub_position] != '=' {
 			position = index + 7
 			continue
 		}
 
 		sub_position += 1
-		for sub_position < len(str) && is_html_space(str[sub_position]) do sub_position += 1
+		for sub_position < len(str) && utils.is_html_space(str[sub_position]) do sub_position += 1
 
 		position = sub_position
 		break
@@ -189,7 +164,7 @@ extract_from_meta :: proc(str: string) -> Maybe(string) {
 	end_pos := position
 	for end_pos < len(str) {
 		c := str[end_pos]
-		if is_html_space(c) || c == ';' do break
+		if utils.is_html_space(c) || c == ';' do break
 		end_pos += 1
 	}
 
@@ -198,7 +173,7 @@ extract_from_meta :: proc(str: string) -> Maybe(string) {
 }
 
 is_utf16_family :: proc(enc: string) -> bool {
-	return ascii_eq_ci(enc, "UTF-16LE") || ascii_eq_ci(enc, "UTF-16BE")
+	return utils.ascii_eq_ci(enc, "UTF-16LE") || utils.ascii_eq_ci(enc, "UTF-16BE")
 }
 
 prescan :: proc(input: []byte) -> Maybe(string) {
@@ -246,10 +221,10 @@ prescan :: proc(input: []byte) -> Maybe(string) {
 		}
 
 		// <meta ...>
-		if (ascii_lower(c1) == 'm') && i + 4 < l &&
-			(ascii_lower(input[i+2]) == 'e') &&
-			(ascii_lower(input[i+3]) == 't') &&
-			(ascii_lower(input[i+4]) == 'a') {
+		if (utils.ascii_lower(c1) == 'm') && i + 4 < l &&
+			(utils.ascii_lower(input[i+2]) == 'e') &&
+			(utils.ascii_lower(input[i+3]) == 't') &&
+			(utils.ascii_lower(input[i+4]) == 'a') {
 
 			i += 5
 
@@ -266,7 +241,7 @@ prescan :: proc(input: []byte) -> Maybe(string) {
 				if !ok do break
 
 				switch attr.name {
-				case "http-equiv": if ascii_eq_ci(attr.value, "content-type") do got_pragma = true
+				case "http-equiv": if utils.ascii_eq_ci(attr.value, "content-type") do got_pragma = true
 				case "content":
 					if enc := extract_from_meta(attr.value); enc != nil {
 						charset = enc.?
@@ -299,23 +274,23 @@ prescan :: proc(input: []byte) -> Maybe(string) {
 extract_xml_decl_encoding :: proc(str: string) -> Maybe(string) {
 	i := 0
 	for i + 7 < len(str) {
-		if ascii_lower(str[i]) == 'e' &&
-			ascii_lower(str[i+1]) == 'n' &&
-			ascii_lower(str[i+2]) == 'c' &&
-			ascii_lower(str[i+3]) == 'o' &&
-			ascii_lower(str[i+4]) == 'd' &&
-			ascii_lower(str[i+5]) == 'i' &&
-			ascii_lower(str[i+6]) == 'n' &&
-			ascii_lower(str[i+7]) == 'g' {
+		if utils.ascii_lower(str[i]) == 'e' &&
+			utils.ascii_lower(str[i+1]) == 'n' &&
+			utils.ascii_lower(str[i+2]) == 'c' &&
+			utils.ascii_lower(str[i+3]) == 'o' &&
+			utils.ascii_lower(str[i+4]) == 'd' &&
+			utils.ascii_lower(str[i+5]) == 'i' &&
+			utils.ascii_lower(str[i+6]) == 'n' &&
+			utils.ascii_lower(str[i+7]) == 'g' {
 
 			j := i + 8
-			for j < len(str) && is_html_space(str[j]) do j += 1
+			for j < len(str) && utils.is_html_space(str[j]) do j += 1
 			if j >= len(str) || str[j] != '=' {
 				i += 8
 				continue
 			}
 			j += 1
-			for j < len(str) && is_html_space(str[j]) do j += 1
+			for j < len(str) && utils.is_html_space(str[j]) do j += 1
 			if j >= len(str) do return nil
 
 			if str[j] == '"' || str[j] == '\'' {
@@ -328,7 +303,7 @@ extract_xml_decl_encoding :: proc(str: string) -> Maybe(string) {
 			}
 
 			start := j
-			for j < len(str) && !is_html_space(str[j]) && str[j] != '?' do j += 1
+			for j < len(str) && !utils.is_html_space(str[j]) && str[j] != '?' do j += 1
 			return label_to_name(str[start:j])
 		}
 		i += 1
@@ -375,10 +350,10 @@ encoding_sniff :: proc(input: []byte, opt: EncodingOptions) -> (string, Confiden
 }
 
 norm_label :: proc(label: string, allocator := context.temp_allocator) -> string {
-	cleaned := trim_space(label)
+	cleaned := utils.trim_space(label)
 	if len(cleaned) == 0 do return ""
 	buf := make([]u8, len(cleaned), allocator)
-	for i in 0..<len(cleaned) do buf[i] = ascii_lower(cleaned[i])
+	for i in 0..<len(cleaned) do buf[i] = utils.ascii_lower(cleaned[i])
 	return string(buf)
 }
 
