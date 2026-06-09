@@ -7,6 +7,12 @@ ParseError :: enum {
     NoncharacterInInputStream,
     ControlCharacterInInputStream,
     UnexpectedNullCharacter,
+    EofBeforeTagName,
+    UnexpectedQuestionMarkInsteadOfTagName,
+    InvalidFirstCharacterOfTagName,
+    MissingEndTagName,
+    EofInTag,
+    EofInScriptHtmlCommentLikeText
 }
 
 

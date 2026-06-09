@@ -17,6 +17,18 @@ ascii_eq_ci :: proc(a, b: string) -> bool {
 	return true
 }
 
+is_ascii_upper_alpha :: #force_inline proc(c: rune) -> bool {
+	return c >= 'A' && c <= 'Z'
+}
+
+is_ascii_lower_alpha :: #force_inline proc(c: rune) -> bool {
+	return c >= 'a' && c <= 'z'
+}
+
+is_ascii_alpha :: #force_inline proc(c: rune) -> bool {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+}
+
 trim_space :: proc(s: string) -> string {
 	start := 0
 	end := len(s)
