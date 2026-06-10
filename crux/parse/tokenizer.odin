@@ -152,6 +152,11 @@ Tokenizer :: struct {
     current_attr_dup: bool,
     has_current_attr: bool,
     comment_data_builder: strings.Builder,
+    doctype_name_builder: strings.Builder,
+	doctype_public_id_builder: strings.Builder,
+	doctype_public_id_set: bool,
+    doctype_system_id_builder: strings.Builder,
+	doctype_system_id_set: bool,
 }
 
 new_tokenizer :: proc(input: ^InputStream, on_error: ParseErrorProc = nil) -> Tokenizer {
@@ -162,6 +167,17 @@ new_tokenizer :: proc(input: ^InputStream, on_error: ParseErrorProc = nil) -> To
         pause_flag = false, 
         on_error = on_error,
     }
+}
+
+destroy_tokenizer :: proc(t: ^Tokenizer) {
+	strings.builder_destroy(&t.tag_name_builder)
+	strings.builder_destroy(&t.temp_buffer)
+	strings.builder_destroy(&t.current_attr_name)
+	strings.builder_destroy(&t.current_attr_value)
+	strings.builder_destroy(&t.comment_data_builder)
+	strings.builder_destroy(&t.doctype_name_builder)
+	strings.builder_destroy(&t.doctype_public_id_builder)
+	strings.builder_destroy(&t.doctype_system_id_builder)
 }
 
 // ----- emit
@@ -239,18 +255,6 @@ create_end_tag :: proc(t: ^Tokenizer, name: string) {
 	t.current_token = End_Token{}
 }
 
-create_comment :: proc(t: ^Tokenizer, data: string) {
-	strings.builder_reset(&t.tag_name_builder)
-	strings.write_string(&t.tag_name_builder, data)
-	t.current_token = Comment_Token{}
-}
-
-create_comment_token :: proc(t: ^Tokenizer, data: string) {
-	t.current_token = Comment_Token{}
-	strings.builder_reset(&t.comment_data_builder)
-	strings.write_string(&t.comment_data_builder, data)
-}
-
 append_to_tag_name :: proc(t: ^Tokenizer, c: rune) {
 	strings.write_rune(&t.tag_name_builder, c)
 }
@@ -275,6 +279,12 @@ is_appropriate_end_tag :: proc(t: ^Tokenizer) -> bool {
 
 append_to_comment_data :: proc(t: ^Tokenizer, c: rune) {
 	strings.write_rune(&t.comment_data_builder, c)
+}
+
+create_comment :: proc(t: ^Tokenizer, data: string) {
+	strings.builder_reset(&t.comment_data_builder)
+	strings.write_string(&t.comment_data_builder, data)
+	t.current_token = Comment_Token{}
 }
 
 // ----- attr
@@ -328,6 +338,66 @@ leave_attribute_name :: proc(t: ^Tokenizer) {
 	if is_dup {
 		if t.on_error != nil do t.on_error(.DuplicateAttribute, 0)
 		t.current_attr_dup = true
+	}
+}
+
+// ----- DOCTYPE
+create_doctype_token :: proc(t: ^Tokenizer) {
+	t.current_token = DOCTYPE_Token{}
+	strings.builder_reset(&t.doctype_name_builder)
+	strings.builder_reset(&t.doctype_public_id_builder)
+	strings.builder_reset(&t.doctype_system_id_builder)
+	t.doctype_public_id_set = false
+	t.doctype_system_id_set = false
+}
+
+init_doctype_system_identifier :: proc(t: ^Tokenizer) {
+	strings.builder_reset(&t.doctype_system_id_builder)
+	t.doctype_system_id_set = true
+}
+
+append_to_doctype_system_identifier :: proc(t: ^Tokenizer, c: rune) {
+	strings.write_rune(&t.doctype_system_id_builder, c)
+}
+
+set_doctype_force_quirks :: proc(t: ^Tokenizer, force: bool) {
+	#partial switch &tok in t.current_token {
+	case DOCTYPE_Token:
+		tok.force_quirks = force
+	}
+}
+
+append_to_doctype_name :: proc(t: ^Tokenizer, c: rune) {
+	strings.write_rune(&t.doctype_name_builder, c)
+}
+
+init_doctype_public_ident :: proc(t: ^Tokenizer) {
+	strings.builder_reset(&t.doctype_public_id_builder)
+	t.doctype_public_id_set = true
+}
+
+append_to_doctype_public_ident :: proc(t: ^Tokenizer, c: rune) {
+	strings.write_rune(&t.doctype_public_id_builder, c)
+}
+
+emit_current_doctype :: proc(t: ^Tokenizer) {
+	#partial switch &tok in t.current_token {
+	case DOCTYPE_Token:
+		tok.name = strings.clone(strings.to_string(t.doctype_name_builder))
+		
+		if t.doctype_public_id_set {
+			tok.public_ident = strings.clone(strings.to_string(t.doctype_public_id_builder))
+		} else {
+			tok.public_ident = nil
+		}
+		
+		if t.doctype_system_id_set {
+			tok.sys_ident = strings.clone(strings.to_string(t.doctype_system_id_builder))
+		} else {
+			tok.sys_ident = nil
+		}
+		
+		emit(tok)
 	}
 }
 
@@ -1376,7 +1446,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	case .MarkupDeclarationOpen:
 		if match(t.input, "--") {
 			consume_n(t.input, 2)
-			create_comment_token(t, "")
+			create_comment(t, "")
 			t.state = .CommentStart
 		} else if match_insensitive(t.input, "DOCTYPE") {
 			consume_n(t.input, 7)
@@ -1385,7 +1455,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
             // ---TODO---
 		} else {
 			if t.on_error != nil do t.on_error(.IncorrectlyOpenedComment, c)
-			create_comment_token(t, "")
+			create_comment(t, "")
 			reconsume(t.input)
 			t.state = .BogusComment
 		}
@@ -1526,6 +1596,276 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			reconsume(t.input)
 			t.state = .Comment
 		}
+
+    // https://html.spec.whatwg.org/multipage/parsing.html#comment-end-state
+	case .CommentEnd:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInComment, 0)
+			emit_current_comment(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '>':
+			t.state = .Data
+			emit_current_comment(t)
+		case '!':
+			t.state = .CommentEndBang
+		case '-':
+			append_to_comment_data(t, '-')
+		case:
+			append_to_comment_data(t, '-')
+			append_to_comment_data(t, '-')
+			reconsume(t.input)
+			t.state = .Comment
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-end-bang-state
+	case .CommentEndBang:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInComment, 0)
+			emit_current_comment(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			append_to_comment_data(t, '-')
+			append_to_comment_data(t, '-')
+			append_to_comment_data(t, '!')
+			t.state = .CommentEndDash
+		case '>':
+			if t.on_error != nil do t.on_error(.IncorrectlyClosedComment, c)
+			t.state = .Data
+			emit_current_comment(t)
+		case:
+			append_to_comment_data(t, '-')
+			append_to_comment_data(t, '-')
+			append_to_comment_data(t, '!')
+			reconsume(t.input)
+			t.state = .Comment
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#doctype-state
+	case .DOCTYPE:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			create_doctype_token(t)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+			t.state = .BeforeDOCTYPEName
+		case '>':
+			reconsume(t.input)
+			t.state = .BeforeDOCTYPEName
+		case:
+			if t.on_error != nil do t.on_error(.MissingWhitespaceBeforeDOCTYPEName, c)
+			reconsume(t.input)
+			t.state = .BeforeDOCTYPEName
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state
+	case .BeforeDOCTYPEName:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			create_doctype_token(t)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+            // Ignore
+		case 'A'..='Z':
+			create_doctype_token(t)
+			append_to_doctype_name(t, c + 0x20)
+			t.state = .DOCTYPEName
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			create_doctype_token(t)
+			append_to_doctype_name(t, '\uFFFD')
+			t.state = .DOCTYPEName
+		case '>':
+			if t.on_error != nil do t.on_error(.MissingDOCTYPEName, c)
+			create_doctype_token(t)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			create_doctype_token(t)
+			append_to_doctype_name(t, c)
+			t.state = .DOCTYPEName
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#doctype-name-state
+	case .DOCTYPEName:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+			t.state = .AfterDOCTYPEName
+		case '>':
+			t.state = .Data
+			emit_current_doctype(t)
+		case 'A'..='Z':
+			append_to_doctype_name(t, c + 0x20)
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_doctype_name(t, '\uFFFD')
+		case:
+			append_to_doctype_name(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-name-state
+	case .AfterDOCTYPEName:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+			// Ignore
+		case '>':
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			if match_insensitive(t.input, "PUBLIC") {
+				consume_n(t.input, 6)
+				t.state = .AfterDOCTYPEPublicKeyword
+			} else if match_insensitive(t.input, "SYSTEM") {
+				consume_n(t.input, 6)
+				t.state = .AfterDOCTYPESystemKeyword
+			} else {
+				if t.on_error != nil do t.on_error(.InvalidCharacterSequenceAfterDOCTYPEName, c)
+				set_doctype_force_quirks(t, true)
+				reconsume(t.input)
+				t.state = .BogusDOCTYPE
+			}
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-public-keyword-state
+	case .AfterDOCTYPEPublicKeyword:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+			t.state = .BeforeDOCTYPEPublicIdentifier
+		case '"':
+			if t.on_error != nil do t.on_error(.MissingWhitespaceAfterDOCTYPEPublicKeyword, c)
+			init_doctype_public_ident(t)
+			t.state = .DOCTYPEPublicIdentifierDoubleQuoted
+		case '\'':
+			if t.on_error != nil do t.on_error(.MissingWhitespaceAfterDOCTYPEPublicKeyword, c)
+			init_doctype_public_ident(t)
+			t.state = .DOCTYPEPublicIdentifierSingleQuoted
+		case '>':
+			if t.on_error != nil do t.on_error(.MissingDOCTYPEPublicIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPEPublicIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			reconsume(t.input)
+			t.state = .BogusDOCTYPE
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-public-identifier-state
+	case .BeforeDOCTYPEPublicIdentifier:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+			// Ignore
+		case '"':
+			init_doctype_public_ident(t)
+			t.state = .DOCTYPEPublicIdentifierDoubleQuoted
+		case '\'':
+			init_doctype_public_ident(t)
+			t.state = .DOCTYPEPublicIdentifierSingleQuoted
+		case '>':
+			if t.on_error != nil do t.on_error(.MissingDOCTYPEPublicIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPEPublicIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			reconsume(t.input)
+			t.state = .BogusDOCTYPE
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#doctype-public-identifier-(double-quoted)-state
+	case .DOCTYPEPublicIdentifierDoubleQuoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '"':
+			t.state = .AfterDOCTYPEPublicIdentifier
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_doctype_public_ident(t, '\uFFFD')
+		case '>':
+			if t.on_error != nil do t.on_error(.AbruptDOCTYPEPublicIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			append_to_doctype_public_ident(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#doctype-public-identifier-(single-quoted)-state
+	case .DOCTYPEPublicIdentifierSingleQuoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\'':
+			t.state = .AfterDOCTYPEPublicIdentifier
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_doctype_public_ident(t, '\uFFFD')
+		case '>':
+			if t.on_error != nil do t.on_error(.AbruptDOCTYPEPublicIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			append_to_doctype_public_ident(t, c)
+		}
+
     }
 }
 

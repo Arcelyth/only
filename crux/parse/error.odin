@@ -21,9 +21,18 @@ ParseError :: enum {
     DuplicateAttribute,
     UnexpectedCharacterInUnquotedAttributeValue,
     IncorrectlyOpenedComment,
+    IncorrectlyClosedComment,
     AbruptClosingOfEmptyComment,
     EofInComment,
     NestedComment,
+    EofInDOCTYPE,
+    MissingWhitespaceBeforeDOCTYPEName,
+    MissingDOCTYPEName,
+    InvalidCharacterSequenceAfterDOCTYPEName,
+    MissingWhitespaceAfterDOCTYPEPublicKeyword,
+    MissingDOCTYPEPublicIdentifier,
+    MissingQuoteBeforeDOCTYPEPublicIdentifier,
+    AbruptDOCTYPEPublicIdentifier,
 }
 
 
