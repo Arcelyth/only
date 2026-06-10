@@ -157,6 +157,8 @@ Tokenizer :: struct {
 	doctype_public_id_set: bool,
     doctype_system_id_builder: strings.Builder,
 	doctype_system_id_set: bool,
+    // character reference code
+    char_ref_code: rune,
 }
 
 new_tokenizer :: proc(input: ^InputStream, on_error: ParseErrorProc = nil) -> Tokenizer {
@@ -216,8 +218,8 @@ emit_temp_buffer :: proc(t: ^Tokenizer) {
 	}
 }
 
-emit_current_tag :: proc(t: ^Tokenizer) {
-    flush_current_attribute(t)
+emit_cur_tag :: proc(t: ^Tokenizer) {
+    flush_cur_attr(t)
 	final_str := strings.to_string(t.tag_name_builder)
 
 	#partial switch &tok in t.current_token {
@@ -234,7 +236,7 @@ emit_current_tag :: proc(t: ^Tokenizer) {
 	}
 }
 
-emit_current_comment :: proc(t: ^Tokenizer) {
+emit_cur_comment :: proc(t: ^Tokenizer) {
 	#partial switch &tok in t.current_token {
 	case Comment_Token:
 		tok.data = strings.clone(strings.to_string(t.comment_data_builder))
@@ -288,7 +290,7 @@ create_comment :: proc(t: ^Tokenizer, data: string) {
 }
 
 // ----- attr
-flush_current_attribute :: proc(t: ^Tokenizer) {
+flush_cur_attr :: proc(t: ^Tokenizer) {
 	if !t.has_current_attr do return
 	if !t.current_attr_dup {
 		attr := Attribute{
@@ -305,8 +307,8 @@ flush_current_attribute :: proc(t: ^Tokenizer) {
 	t.has_current_attr = false
 }
 
-start_new_attribute :: proc(t: ^Tokenizer) {
-	flush_current_attribute(t)
+start_new_attr :: proc(t: ^Tokenizer) {
+	flush_cur_attr(t)
 
 	strings.builder_reset(&t.current_attr_name)
 	strings.builder_reset(&t.current_attr_value)
@@ -314,15 +316,15 @@ start_new_attribute :: proc(t: ^Tokenizer) {
 	t.has_current_attr = true
 }
 
-append_to_attribute_name :: proc(t: ^Tokenizer, c: rune) {
+append_to_cur_attr_name :: proc(t: ^Tokenizer, c: rune) {
 	strings.write_rune(&t.current_attr_name, c)
 }
 
-append_to_attribute_value :: proc(t: ^Tokenizer, c: rune) {
+append_to_cur_attr_val :: proc(t: ^Tokenizer, c: rune) {
 	strings.write_rune(&t.current_attr_value, c)
 }
 
-leave_attribute_name :: proc(t: ^Tokenizer) {
+leave_attr_name :: proc(t: ^Tokenizer) {
 	if !t.has_current_attr do return
 
 	name := strings.to_string(t.current_attr_name)
@@ -380,7 +382,7 @@ append_to_doctype_public_ident :: proc(t: ^Tokenizer, c: rune) {
 	strings.write_rune(&t.doctype_public_id_builder, c)
 }
 
-emit_current_doctype :: proc(t: ^Tokenizer) {
+emit_cur_doctype :: proc(t: ^Tokenizer) {
 	#partial switch &tok in t.current_token {
 	case DOCTYPE_Token:
 		tok.name = strings.clone(strings.to_string(t.doctype_name_builder))
@@ -406,6 +408,48 @@ set_self_closing_flag :: proc(t: ^Tokenizer) {
 	case Start_Token: tok.self_closing = true
 	case End_Token: tok.self_closing = true
 	}
+}
+
+// https://html.spec.whatwg.org/multipage/parsing.html#charref-in-attribute
+is_consumed_as_part_of_attr :: proc(t: ^Tokenizer) -> bool {
+    return t.return_state == .AttributeValueDoubleQuoted || 
+           t.return_state == .AttributeValueSingleQuoted || 
+           t.return_state == .AttributeValueUnquoted
+}
+
+// https://html.spec.whatwg.org/multipage/parsing.html#flush-code-points-consumed-as-a-character-reference
+flush_code_points_consumed_as_char_ref :: proc(t: ^Tokenizer) {
+    s := strings.to_string(t.temp_buffer)
+    for cp in s {
+        if is_consumed_as_part_of_attr(t) do append_to_cur_attr_val(t, cp)
+        else do emit_char(cp)
+    }
+}
+
+try_consume_named_char_ref :: proc(t: ^Tokenizer) -> (match_found: bool, is_last_semicolon: bool, matched_str: string) {
+    longest_match_len := 0
+    longest_match_str := ""
+    longest_match_name := ""
+    has_semicolon := false
+
+    for name, value in named_char_ref_map {
+        if len(name) > longest_match_len {
+            if match(t.input, name) {
+                longest_match_len = len(name)
+                longest_match_str = value
+                longest_match_name = name
+                has_semicolon = strings.has_suffix(name, ";")
+            }
+        }
+    }
+
+    if longest_match_len > 0 {
+        for r in longest_match_name do strings.write_rune(&t.temp_buffer, r)
+        consume_n(t.input, longest_match_len)
+        return true, has_semicolon, longest_match_str
+    }
+
+    return false, false, ""
 }
 
 step_tokenizer :: proc(t: ^Tokenizer) {
@@ -572,7 +616,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .SelfClosingStartTag
 		case '>':
 			t.state = .Data
-			emit_current_tag(t)
+			emit_cur_tag(t)
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
 			append_to_tag_name(t, '\uFFFD')
@@ -656,7 +700,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if is_appropriate_end_tag(t) {
 				t.state = .Data
-				emit_current_tag(t)
+				emit_cur_tag(t)
 			} else {
 				emit_char('<')
 				emit_char('/')
@@ -752,7 +796,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if is_appropriate_end_tag(t) {
 				t.state = .Data
-				emit_current_tag(t)
+				emit_cur_tag(t)
 			} else {
 				emit_char('<')
 				emit_char('/')
@@ -852,7 +896,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if is_appropriate_end_tag(t) {
 				t.state = .Data
-				emit_current_tag(t)
+				emit_cur_tag(t)
 			} else {
 				emit_char('<')
 				emit_char('/')
@@ -1053,7 +1097,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if is_appropriate_end_tag(t) {
 				t.state = .Data
-				emit_current_tag(t)
+				emit_cur_tag(t)
 			} else {
 				emit_char('<')
 				emit_char('/')
@@ -1234,11 +1278,11 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .AfterAttributeName
 		case '=':
 			if t.on_error != nil do t.on_error(.UnexpectedEqualsSignBeforeAttributeName, c)
-			start_new_attribute(t)
-			append_to_attribute_name(t, '=')
+			start_new_attr(t)
+			append_to_cur_attr_name(t, '=')
 			t.state = .AttributeName
 		case:
-			start_new_attribute(t)
+			start_new_attr(t)
 			reconsume(t.input)
 			t.state = .AttributeName
 		}
@@ -1246,30 +1290,30 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	// https://html.spec.whatwg.org/multipage/parsing.html#attribute-name-state
 	case .AttributeName:
 		if is_eof {
-			leave_attribute_name(t)
+			leave_attr_name(t)
 			reconsume(t.input)
 			t.state = .AfterAttributeName
 			return
 		}
 		switch c {
 		case '\t', '\n', '\x0C', ' ', '/', '>':
-			leave_attribute_name(t)
+			leave_attr_name(t)
 			reconsume(t.input)
 			t.state = .AfterAttributeName
 		case '=':
-			leave_attribute_name(t)
+			leave_attr_name(t)
 			t.state = .BeforeAttributeValue
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
-			append_to_attribute_name(t, '\uFFFD')
+			append_to_cur_attr_name(t, '\uFFFD')
 		case '"', '\'', '<':
 			if t.on_error != nil do t.on_error(.UnexpectedCharacterInAttributeName, c)
-			append_to_attribute_name(t, c)
+			append_to_cur_attr_name(t, c)
 		case:
 			if utils.is_ascii_upper_alpha(c) {
-				append_to_attribute_name(t, c + 0x0020)
+				append_to_cur_attr_name(t, c + 0x0020)
 			} else {
-				append_to_attribute_name(t, c)
+				append_to_cur_attr_name(t, c)
 			}
 		}
 
@@ -1289,9 +1333,9 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .BeforeAttributeValue
 		case '>':
 			t.state = .Data
-			emit_current_tag(t)
+			emit_cur_tag(t)
 		case:
-			start_new_attribute(t)
+			start_new_attr(t)
 			reconsume(t.input)
 			t.state = .AttributeName
 		}
@@ -1313,7 +1357,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if t.on_error != nil do t.on_error(.MissingAttributeValue, c)
 			t.state = .Data
-			emit_current_tag(t)
+			emit_cur_tag(t)
 		case:
 			reconsume(t.input)
 			t.state = .AttributeValueUnquoted
@@ -1334,9 +1378,9 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .CharacterReference
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
-			append_to_attribute_value(t, '\uFFFD')
+			append_to_cur_attr_val(t, '\uFFFD')
 		case:
-			append_to_attribute_value(t, c)
+			append_to_cur_attr_val(t, c)
 		}
 
 	// https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-single-quoted-state
@@ -1354,9 +1398,9 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .CharacterReference
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
-			append_to_attribute_value(t, '\uFFFD')
+			append_to_cur_attr_val(t, '\uFFFD')
 		case:
-			append_to_attribute_value(t, c)
+			append_to_cur_attr_val(t, c)
 		}
 
 	// https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-unquoted-state
@@ -1374,15 +1418,15 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .CharacterReference
 		case '>':
 			t.state = .Data
-			emit_current_tag(t)
+			emit_cur_tag(t)
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
-			append_to_attribute_value(t, '\uFFFD')
+			append_to_cur_attr_val(t, '\uFFFD')
 		case '"', '\'', '<', '=', '`':
 			if t.on_error != nil do t.on_error(.UnexpectedCharacterInUnquotedAttributeValue, c)
-			append_to_attribute_value(t, c)
+			append_to_cur_attr_val(t, c)
 		case:
-			append_to_attribute_value(t, c)
+			append_to_cur_attr_val(t, c)
 		}
 
 	// https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-value-quoted-state
@@ -1399,7 +1443,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .SelfClosingStartTag
 		case '>':
 			t.state = .Data
-			emit_current_tag(t)
+			emit_cur_tag(t)
 		case:
 			if t.on_error != nil do t.on_error(.MissingWhitespaceBetweenAttributes, c)
 			reconsume(t.input)
@@ -1417,7 +1461,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			set_self_closing_flag(t)
 			t.state = .Data
-			emit_current_tag(t)
+			emit_cur_tag(t)
 		case:
 			if t.on_error != nil do t.on_error(.UnexpectedSolidusInTag, c)
 			reconsume(t.input)
@@ -1427,14 +1471,14 @@ step_tokenizer :: proc(t: ^Tokenizer) {
     // https://html.spec.whatwg.org/multipage/parsing.html#bogus-comment-state
 	case .BogusComment:
 		if is_eof {
-			emit_current_comment(t)
+			emit_cur_comment(t)
 			emit_eof()
 			return
 		}
 		switch c {
 		case '>':
 			t.state = .Data
-			emit_current_comment(t)
+			emit_cur_comment(t)
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
 			append_to_comment_data(t, '\uFFFD')
@@ -1473,7 +1517,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if t.on_error != nil do t.on_error(.AbruptClosingOfEmptyComment, c)
 			t.state = .Data
-			emit_current_comment(t)
+			emit_cur_comment(t)
 		case:
 			reconsume(t.input)
 			t.state = .Comment
@@ -1483,7 +1527,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	case .CommentStartDash:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInComment, c)
-			emit_current_comment(t)
+			emit_cur_comment(t)
 			emit_eof()
 			return
 		}
@@ -1493,7 +1537,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if t.on_error != nil do t.on_error(.AbruptClosingOfEmptyComment, c)
 			t.state = .Data
-			emit_current_comment(t)
+			emit_cur_comment(t)
 		case:
 			append_to_comment_data(t, '-')
 			reconsume(t.input)
@@ -1504,7 +1548,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	case .Comment:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInComment, c)
-			emit_current_comment(t)
+			emit_cur_comment(t)
 			emit_eof()
 			return
 		}
@@ -1584,7 +1628,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	case .CommentEndDash:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInComment, c)
-			emit_current_comment(t)
+			emit_cur_comment(t)
 			emit_eof()
 			return
 		}
@@ -1601,14 +1645,14 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	case .CommentEnd:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInComment, 0)
-			emit_current_comment(t)
+			emit_cur_comment(t)
 			emit_eof()
 			return
 		}
 		switch c {
 		case '>':
 			t.state = .Data
-			emit_current_comment(t)
+			emit_cur_comment(t)
 		case '!':
 			t.state = .CommentEndBang
 		case '-':
@@ -1624,7 +1668,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	case .CommentEndBang:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInComment, 0)
-			emit_current_comment(t)
+			emit_cur_comment(t)
 			emit_eof()
 			return
 		}
@@ -1637,7 +1681,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '>':
 			if t.on_error != nil do t.on_error(.IncorrectlyClosedComment, c)
 			t.state = .Data
-			emit_current_comment(t)
+			emit_cur_comment(t)
 		case:
 			append_to_comment_data(t, '-')
 			append_to_comment_data(t, '-')
@@ -1652,7 +1696,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			create_doctype_token(t)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1674,7 +1718,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			create_doctype_token(t)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1695,7 +1739,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			create_doctype_token(t)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			create_doctype_token(t)
 			append_to_doctype_name(t, c)
@@ -1707,7 +1751,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1716,7 +1760,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .AfterDOCTYPEName
 		case '>':
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case 'A'..='Z':
 			append_to_doctype_name(t, c + 0x20)
 		case 0x0000:
@@ -1731,7 +1775,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1740,7 +1784,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			// Ignore
 		case '>':
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			if match_insensitive(t.input, "PUBLIC") {
 				consume_n(t.input, 6)
@@ -1761,7 +1805,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1780,7 +1824,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.MissingDOCTYPEPublicIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPEPublicIdentifier, c)
 			set_doctype_force_quirks(t, true)
@@ -1793,7 +1837,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1810,7 +1854,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.MissingDOCTYPEPublicIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPEPublicIdentifier, c)
 			set_doctype_force_quirks(t, true)
@@ -1823,7 +1867,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1837,7 +1881,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.AbruptDOCTYPEPublicIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			append_to_doctype_public_ident(t, c)
 		}
@@ -1847,7 +1891,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1861,7 +1905,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.AbruptDOCTYPEPublicIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			append_to_doctype_public_ident(t, c)
 		}
@@ -1871,7 +1915,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1880,7 +1924,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			t.state = .BetweenDOCTYPEPublicAndSystemIdentifiers
 		case '>':
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case '"':
 			if t.on_error != nil do t.on_error(.MissingWhitespaceBetweenDOCTYPEPublicAndSystemIdentifiers, c)
 			init_doctype_system_identifier(t)
@@ -1901,7 +1945,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1910,7 +1954,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
             // Ignore
 		case '>':
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case '"':
 			init_doctype_system_identifier(t)
 			t.state = .DOCTYPESystemIdentifierDoubleQuoted
@@ -1929,7 +1973,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1948,7 +1992,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.MissingDOCTYPESystemIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPESystemIdentifier, c)
 			set_doctype_force_quirks(t, true)
@@ -1961,7 +2005,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -1978,7 +2022,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.MissingDOCTYPESystemIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPESystemIdentifier, c)
 			set_doctype_force_quirks(t, true)
@@ -1991,7 +2035,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -2005,7 +2049,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.AbruptDOCTYPESystemIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			append_to_doctype_system_identifier(t, c)
 		}
@@ -2015,7 +2059,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -2029,7 +2073,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.AbruptDOCTYPESystemIdentifier, c)
 			set_doctype_force_quirks(t, true)
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			append_to_doctype_system_identifier(t, c)
 		}
@@ -2039,7 +2083,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
 			set_doctype_force_quirks(t, true)
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
@@ -2047,7 +2091,7 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 		case '\t', '\n', '\f', ' ':
 		case '>':
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case:
 			if t.on_error != nil do t.on_error(.UnexpectedCharacterAfterDOCTYPESystemIdentifier, c)
 			reconsume(t.input)
@@ -2057,14 +2101,14 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 	// https://html.spec.whatwg.org/multipage/parsing.html#bogus-doctype-state
 	case .BogusDOCTYPE:
 		if is_eof {
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 			emit_eof()
 			return
 		}
 		switch c {
 		case '>':
 			t.state = .Data
-			emit_current_doctype(t)
+			emit_cur_doctype(t)
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
 		case:
@@ -2100,7 +2144,246 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			reconsume(t.input)
 			t.state = .CDATASection
 		}
-    
+
+    // https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-end-state
+	case .CDATASectionEnd:
+		if is_eof {
+			emit_char(']')
+			emit_char(']')
+			reconsume(t.input)
+			t.state = .CDATASection
+			return
+		}
+		switch c {
+		case ']':
+			emit_char(']')
+		case '>':
+			t.state = .Data
+		case:
+			emit_char(']')
+			emit_char(']')
+			reconsume(t.input)
+			t.state = .CDATASection
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#character-reference-state
+	case .CharacterReference:
+		strings.builder_reset(&t.temp_buffer)
+		strings.write_rune(&t.temp_buffer, '&')
+		if is_eof {
+			flush_code_points_consumed_as_char_ref(t)
+			reconsume(t.input)
+			t.state = t.return_state
+			return
+		}
+		switch {
+		case utils.is_ascii_alphanum(c):
+			reconsume(t.input)
+			t.state = .NamedCharacterReference
+		case c == '#':
+			strings.write_rune(&t.temp_buffer, c)
+			t.state = .NumericCharacterReference
+		case:
+			flush_code_points_consumed_as_char_ref(t)
+			reconsume(t.input)
+			t.state = t.return_state
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state
+	case .NamedCharacterReference:
+		match_found, is_last_semicolon, matched_str := try_consume_named_char_ref(t)
+		if match_found {
+			next_c, has_next := peek(t.input).? 
+			if is_consumed_as_part_of_attr(t) && !is_last_semicolon && has_next && (next_c == '=' || utils.is_ascii_alphanum(next_c)) {
+				flush_code_points_consumed_as_char_ref(t)
+				t.state = t.return_state
+			} else {
+				if !is_last_semicolon {
+					if t.on_error != nil do t.on_error(.MissingSemicolonAfterCharacterReference, 0)
+				}
+				strings.builder_reset(&t.temp_buffer)
+				strings.write_string(&t.temp_buffer, matched_str)
+				flush_code_points_consumed_as_char_ref(t)
+				t.state = t.return_state
+			}
+		} else {
+			flush_code_points_consumed_as_char_ref(t)
+			t.state = .AmbiguousAmpersand
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#ambiguous-ampersand-state
+	case .AmbiguousAmpersand:
+		if is_eof {
+			reconsume(t.input)
+			t.state = t.return_state
+			return
+		}
+		switch {
+		case utils.is_ascii_alphanum(c):
+			if is_consumed_as_part_of_attr(t) {
+				append_to_cur_attr_val(t, c)
+			} else {
+				emit_char(c)
+			}
+		case c == ';':
+			if t.on_error != nil do t.on_error(.UnknownNamedCharacterReference, c)
+			reconsume(t.input)
+			t.state = t.return_state
+		case:
+			reconsume(t.input)
+			t.state = t.return_state
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-state
+	case .NumericCharacterReference:
+		t.char_ref_code = 0
+		if is_eof {
+			reconsume(t.input)
+			t.state = .DecimalCharacterReferenceStart
+			return
+		}
+		switch c {
+		case 'x', 'X':
+			strings.write_rune(&t.temp_buffer, c)
+			t.state = .HexadecimalCharacterReferenceStart
+		case:
+			reconsume(t.input)
+			t.state = .DecimalCharacterReferenceStart
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#hexadecimal-character-reference-start-state
+	case .HexadecimalCharacterReferenceStart:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.AbsenceOfDigitsInNumericCharacterReference, 0)
+			flush_code_points_consumed_as_char_ref(t)
+			reconsume(t.input)
+			t.state = t.return_state
+			return
+		}
+		switch {
+		case utils.is_ascii_hex_digit(c):
+			reconsume(t.input)
+			t.state = .HexadecimalCharacterReference
+		case:
+			if t.on_error != nil do t.on_error(.AbsenceOfDigitsInNumericCharacterReference, c)
+			flush_code_points_consumed_as_char_ref(t)
+			reconsume(t.input)
+			t.state = t.return_state
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#decimal-character-reference-start-state
+	case .DecimalCharacterReferenceStart:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.AbsenceOfDigitsInNumericCharacterReference, 0)
+			flush_code_points_consumed_as_char_ref(t)
+			reconsume(t.input)
+			t.state = t.return_state
+			return
+		}
+		switch {
+		case utils.is_ascii_digit(c):
+			reconsume(t.input)
+			t.state = .DecimalCharacterReference
+		case:
+			if t.on_error != nil do t.on_error(.AbsenceOfDigitsInNumericCharacterReference, c)
+			flush_code_points_consumed_as_char_ref(t)
+			reconsume(t.input)
+			t.state = t.return_state
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#hexadecimal-character-reference-state
+	case .HexadecimalCharacterReference:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.MissingSemicolonAfterCharacterReference, 0)
+			reconsume(t.input)
+			t.state = .NumericCharacterReferenceEnd
+			return
+		}
+		switch {
+		case utils.is_ascii_digit(c):
+			t.char_ref_code = t.char_ref_code * 16 + (c - 0x0030)
+		case utils.is_ascii_upper_hex_digit(c):
+			t.char_ref_code = t.char_ref_code * 16 + (c - 0x0037)
+		case utils.is_ascii_lower_hex_digit(c):
+			t.char_ref_code = t.char_ref_code * 16 + (c - 0x0057)
+		case c == ';':
+			t.state = .NumericCharacterReferenceEnd
+		case:
+			if t.on_error != nil do t.on_error(.MissingSemicolonAfterCharacterReference, c)
+			reconsume(t.input)
+			t.state = .NumericCharacterReferenceEnd
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#decimal-character-reference-state
+	case .DecimalCharacterReference:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.MissingSemicolonAfterCharacterReference, 0)
+			reconsume(t.input)
+			t.state = .NumericCharacterReferenceEnd
+			return
+		}
+		switch {
+		case utils.is_ascii_digit(c):
+			t.char_ref_code = t.char_ref_code * 10 + (c - 0x0030)
+		case c == ';':
+			t.state = .NumericCharacterReferenceEnd
+		case:
+			if t.on_error != nil do t.on_error(.MissingSemicolonAfterCharacterReference, c)
+			reconsume(t.input)
+			t.state = .NumericCharacterReferenceEnd
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-end-state
+	case .NumericCharacterReferenceEnd:
+		code := t.char_ref_code
+		if code == 0x00 {
+			if t.on_error != nil do t.on_error(.NullCharacterReference, 0)
+			code = 0xFFFD
+		} else if code > 0x10FFFF {
+			if t.on_error != nil do t.on_error(.CharacterReferenceOutsideUnicodeRange, 0)
+			code = 0xFFFD
+		} else if utils.is_surrogate(code) {
+			if t.on_error != nil do t.on_error(.SurrogateCharacterReference, 0)
+			code = 0xFFFD
+		} else if utils.is_noncharacter(code) {
+			if t.on_error != nil do t.on_error(.NoncharacterCharacterReference, 0)
+		} else if code == 0x0D || (utils.is_control(code) && !utils.is_ascii_whitespace(code)) {
+			if t.on_error != nil do t.on_error(.ControlCharacterReference, 0)
+			switch code {
+			case 0x80: code = 0x20AC
+			case 0x82: code = 0x201A
+			case 0x83: code = 0x0192
+			case 0x84: code = 0x201E
+			case 0x85: code = 0x2026
+			case 0x86: code = 0x2020
+			case 0x87: code = 0x2021
+			case 0x88: code = 0x02C6
+			case 0x89: code = 0x2030
+			case 0x8A: code = 0x0160
+			case 0x8B: code = 0x2039
+			case 0x8C: code = 0x0152
+			case 0x8E: code = 0x017D
+			case 0x91: code = 0x2018
+			case 0x92: code = 0x2019
+			case 0x93: code = 0x201C
+			case 0x94: code = 0x201D
+			case 0x95: code = 0x2022
+			case 0x96: code = 0x2013
+			case 0x97: code = 0x2014
+			case 0x98: code = 0x02DC
+			case 0x99: code = 0x2122
+			case 0x9A: code = 0x0161
+			case 0x9B: code = 0x203A
+			case 0x9C: code = 0x0153
+			case 0x9E: code = 0x017E
+			case 0x9F: code = 0x0178
+			}
+		}
+
+		strings.builder_reset(&t.temp_buffer)
+		strings.write_rune(&t.temp_buffer, rune(code))
+		flush_code_points_consumed_as_char_ref(t)
+		t.state = t.return_state
     }
 }
 

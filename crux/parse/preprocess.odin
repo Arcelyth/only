@@ -1,30 +1,7 @@
 package parse
 
 import "core:strings"
-
-// https://infra.spec.whatwg.org/#surrogate
-is_surrogate :: proc(c: rune) -> bool {
-    return (c >= 0xD800 && c <= 0xDBFF) || // leading surragate
-    (c >= 0xDC00 && c <= 0xDFFF)    // tailing surragate
-} 
-
-// https://infra.spec.whatwg.org/#noncharacter
-is_noncharacter :: proc(c: rune) -> bool {
-	if c >= 0xFDD0 && c <= 0xFDEF do return true
-	return c <= 0x10FFFF && (c & 0xFFFE) == 0xFFFE
-}
-
-// https://infra.spec.whatwg.org/#ascii-whitespace
-is_ascii_whitespace :: proc(c: rune) -> bool {
-	return c == 0x09 || c == 0x0A || c == 0x0C || c == 0x0D || c == 0x20
-}
-
-// https://infra.spec.whatwg.org/#control
-is_control_character :: proc(c: rune) -> bool {
-	if c == 0 do return false
-	if is_ascii_whitespace(c) do return false
-	return (c >= 0x0001 && c <= 0x001F) || (c >= 0x007F && c <= 0x009F)
-}
+import "../utils"
 
 // https://infra.spec.whatwg.org/#normalize-newlines
 norm_newline :: proc(str: string) -> string {
@@ -51,11 +28,11 @@ preprocess :: proc(input: ^InputStream, on_error: ParseErrorProc = nil) {
         }
 
         if on_error != nil {
-            if is_surrogate(c) {
+            if utils.is_surrogate(c) {
                 on_error(.SurrogateInInputStream, c)
-            } else if is_noncharacter(c) {
+            } else if utils.is_noncharacter(c) {
                 on_error(.NoncharacterInInputStream, c)
-            } else if is_control_character(c) {
+            } else if utils.is_control(c) {
                 on_error(.ControlCharacterInInputStream, c)
             }
         }

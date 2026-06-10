@@ -40,6 +40,14 @@ ParseError :: enum {
     AbruptDOCTYPESystemIdentifier,
     UnexpectedCharacterAfterDOCTYPESystemIdentifier,
     EofInCDATA,
+    MissingSemicolonAfterCharacterReference,
+    AbsenceOfDigitsInNumericCharacterReference,
+    NullCharacterReference,
+    CharacterReferenceOutsideUnicodeRange,
+    SurrogateCharacterReference,
+    NoncharacterCharacterReference,
+    ControlCharacterReference,
+    UnknownNamedCharacterReference,
 }
 
 
