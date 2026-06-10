@@ -19,6 +19,6 @@ Element :: struct {
     namespace: Namespace,
     prefix: string,
     local_name: string,
-    attrs: [dynamic]Attribute,
+    attrs: [dynamic]DOM_Attribute,
     parent: ^Element,
 }

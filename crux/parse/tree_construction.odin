@@ -1,5 +1,7 @@
 package parse
 
+import "core:slice"
+
 InsertionMode :: enum {
 	Initial,
 	BeforeHtml,
@@ -24,6 +26,19 @@ InsertionMode :: enum {
 	AfterAfterFrameset,
 }
 
+ScriptingMode :: enum {
+	Normal,
+	Disabled,
+	Inert,
+	Fragment,
+}
+
+DOM_Attribute :: struct {
+	name: string,
+	namespace: string,
+	value: string,
+}
+
 Parser :: struct {
     // insertion mode
     insert_mode: InsertionMode,
@@ -34,10 +49,13 @@ Parser :: struct {
     open_elements: [dynamic]^Element,
     fragment_case: bool,
     context_element: ^Element,
+	active_formatting_elements: [dynamic]FormattingEntry,
+    // https://html.spec.whatwg.org/multipage/parsing.html#the-element-pointers
 	head_element_pointer: ^Element,
 	form_element_pointer: ^Element,
-
-	active_formatting_elements: [dynamic]FormattingEntry,
+    // https://html.spec.whatwg.org/multipage/parsing.html#other-parsing-state-flags
+    scripting_mode: ScriptingMode,
+	frameset_ok: bool,
 }
 
 FormattingEntryKind :: enum {
@@ -230,6 +248,139 @@ has_element_in_scope :: proc(p: ^Parser, target: ^Element, boundary: proc(^Eleme
     }
 
     return false
+}
+
+// --- TODO ---
+insert_html_element_for_token :: proc(p: ^Parser, token: Token) -> ^Element {
+    elem := new(Element)
+    return elem
+}
+
+are_attributes_equal :: proc(a, b: [dynamic]DOM_Attribute) -> bool {
+	if len(a) != len(b) do return false
+	if len(a) == 0 do return true
+
+	visited_buf: [64]bool
+	visited := visited_buf[:len(b)]
+	if len(b) > 64 {
+		visited = make([]bool, len(b), context.temp_allocator)
+	}
+
+	for attr_a in a {
+		found := false
+		for attr_b, idx in b {
+			if visited[idx] do continue
+
+			if attr_a.name == attr_b.name && 
+                attr_a.namespace == attr_b.namespace &&
+                attr_a.value == attr_b.value {
+				visited[idx] = true
+				found = true
+				break
+			}
+		}
+		if !found do return false
+	}
+
+	return true
+}
+
+push_active_formatting_element :: proc(p: ^Parser, el: ^Element, tok: Token) {
+	if p == nil || el == nil do return
+
+	since_marker := 0
+	for i := len(p.active_formatting_elements) - 1; i >= 0; i -= 1 {
+		if p.active_formatting_elements[i].kind == .Marker {
+			since_marker = i + 1
+			break
+		}
+	}
+
+	same_count := 0
+	earliest_same := -1
+
+	for i := since_marker; i < len(p.active_formatting_elements); i += 1 {
+		entry := p.active_formatting_elements[i]
+		if entry.kind != .Element do continue
+		
+		e1 := entry.element
+		if e1.local_name == el.local_name && e1.namespace == el.namespace {
+			if are_attributes_equal(e1.attrs, el.attrs) {
+				same_count += 1
+				if earliest_same == -1 do earliest_same = i
+			}
+		}
+	}
+
+	if same_count >= 3 && earliest_same != -1 {
+		ordered_remove(&p.active_formatting_elements, earliest_same)
+	}
+
+	append(&p.active_formatting_elements, FormattingEntry{
+		kind = .Element,
+		element = el,
+		token = tok,
+	})
+}
+
+push_formatting_marker :: proc(p: ^Parser) {
+	append(&p.active_formatting_elements, FormattingEntry{ kind = .Marker})
+}
+
+element_in_open_elements :: proc(p: ^Parser, elem: ^Element) -> bool {
+    for e in p.open_elements do if e == elem do return true
+    return false
+}
+
+reconstruct_active_formatting_elements :: proc(p: ^Parser) {
+	if p == nil || len(p.active_formatting_elements) == 0 do return
+
+	last := p.active_formatting_elements[len(p.active_formatting_elements)-1]
+
+	if last.kind == .Marker do return
+	if last.kind == .Element && element_in_open_elements(p, last.element) do return
+
+	entry_idx := len(p.active_formatting_elements) - 1
+
+    // rewind
+	for {
+		if entry_idx == 0 do break
+		entry_idx -= 1
+
+		entry := p.active_formatting_elements[entry_idx]
+		if entry.kind == .Marker {
+			entry_idx += 1
+			break
+		}
+		if entry.kind == .Element && element_in_open_elements(p, entry.element) {
+			entry_idx += 1
+			break
+		}
+	}
+
+	// advance/create
+	for entry_idx < len(p.active_formatting_elements) {
+		entry := p.active_formatting_elements[entry_idx]
+		if entry.kind == .Marker {
+			entry_idx += 1
+			continue
+		}
+
+		new_el := insert_html_element_for_token(p, entry.token)
+		p.active_formatting_elements[entry_idx].element = new_el
+
+		if entry_idx == len(p.active_formatting_elements) - 1 do break
+		entry_idx += 1
+	}
+}
+
+clear_active_formatting_elements_up_to_last_marker :: proc(p: ^Parser) {
+	if p == nil do return
+
+	for len(p.active_formatting_elements) > 0 {
+        entry := pop(&p.active_formatting_elements)
+		if entry.kind == .Marker do return
+	}
 }
 
 handle_token :: proc(t: Token) {
