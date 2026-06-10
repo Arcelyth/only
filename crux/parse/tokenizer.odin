@@ -1866,6 +1866,241 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			append_to_doctype_public_ident(t, c)
 		}
 
+    // https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-public-identifier-state
+	case .AfterDOCTYPEPublicIdentifier:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+			t.state = .BetweenDOCTYPEPublicAndSystemIdentifiers
+		case '>':
+			t.state = .Data
+			emit_current_doctype(t)
+		case '"':
+			if t.on_error != nil do t.on_error(.MissingWhitespaceBetweenDOCTYPEPublicAndSystemIdentifiers, c)
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierDoubleQuoted
+		case '\'':
+			if t.on_error != nil do t.on_error(.MissingWhitespaceBetweenDOCTYPEPublicAndSystemIdentifiers, c)
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierSingleQuoted
+		case:
+			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			reconsume(t.input)
+			t.state = .BogusDOCTYPE
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#between-doctype-public-and-system-identifiers-state
+	case .BetweenDOCTYPEPublicAndSystemIdentifiers:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+            // Ignore
+		case '>':
+			t.state = .Data
+			emit_current_doctype(t)
+		case '"':
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierDoubleQuoted
+		case '\'':
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierSingleQuoted
+		case:
+			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			reconsume(t.input)
+			t.state = .BogusDOCTYPE
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-system-keyword-state
+	case .AfterDOCTYPESystemKeyword:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+			t.state = .BeforeDOCTYPESystemIdentifier
+		case '"':
+			if t.on_error != nil do t.on_error(.MissingWhitespaceAfterDOCTYPESystemKeyword, c)
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierDoubleQuoted
+		case '\'':
+			if t.on_error != nil do t.on_error(.MissingWhitespaceAfterDOCTYPESystemKeyword, c)
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierSingleQuoted
+		case '>':
+			if t.on_error != nil do t.on_error(.MissingDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			reconsume(t.input)
+			t.state = .BogusDOCTYPE
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-system-identifier-state
+	case .BeforeDOCTYPESystemIdentifier:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+            // Ignore
+		case '"':
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierDoubleQuoted
+		case '\'':
+			init_doctype_system_identifier(t)
+			t.state = .DOCTYPESystemIdentifierSingleQuoted
+		case '>':
+			if t.on_error != nil do t.on_error(.MissingDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			if t.on_error != nil do t.on_error(.MissingQuoteBeforeDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			reconsume(t.input)
+			t.state = .BogusDOCTYPE
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#doctype-system-identifier-(double-quoted)-state
+	case .DOCTYPESystemIdentifierDoubleQuoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '"':
+			t.state = .AfterDOCTYPESystemIdentifier
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_doctype_system_identifier(t, '\uFFFD')
+		case '>':
+			if t.on_error != nil do t.on_error(.AbruptDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			append_to_doctype_system_identifier(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#doctype-system-identifier-(single-quoted)-state
+	case .DOCTYPESystemIdentifierSingleQuoted:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\'':
+			t.state = .AfterDOCTYPESystemIdentifier
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_doctype_system_identifier(t, '\uFFFD')
+		case '>':
+			if t.on_error != nil do t.on_error(.AbruptDOCTYPESystemIdentifier, c)
+			set_doctype_force_quirks(t, true)
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			append_to_doctype_system_identifier(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-system-identifier-state
+	case .AfterDOCTYPESystemIdentifier:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
+			set_doctype_force_quirks(t, true)
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '\t', '\n', '\f', ' ':
+		case '>':
+			t.state = .Data
+			emit_current_doctype(t)
+		case:
+			if t.on_error != nil do t.on_error(.UnexpectedCharacterAfterDOCTYPESystemIdentifier, c)
+			reconsume(t.input)
+			t.state = .BogusDOCTYPE
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#bogus-doctype-state
+	case .BogusDOCTYPE:
+		if is_eof {
+			emit_current_doctype(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '>':
+			t.state = .Data
+			emit_current_doctype(t)
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+		case:
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-state
+	case .CDATASection:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInCDATA, 0)
+			emit_eof()
+			return
+		}
+		switch c {
+		case ']':
+			t.state = .CDATASectionBracket
+		case:
+			emit_char(c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-bracket-state
+	case .CDATASectionBracket:
+		if is_eof {
+			emit_char(']')
+			reconsume(t.input)
+			t.state = .CDATASection
+			return
+		}
+		switch c {
+		case ']':
+			t.state = .CDATASectionEnd
+		case:
+			emit_char(']')
+			reconsume(t.input)
+			t.state = .CDATASection
+		}
+    
     }
 }
 

@@ -33,6 +33,13 @@ ParseError :: enum {
     MissingDOCTYPEPublicIdentifier,
     MissingQuoteBeforeDOCTYPEPublicIdentifier,
     AbruptDOCTYPEPublicIdentifier,
+    MissingWhitespaceBetweenDOCTYPEPublicAndSystemIdentifiers,
+    MissingQuoteBeforeDOCTYPESystemIdentifier,
+    MissingWhitespaceAfterDOCTYPESystemKeyword,
+    MissingDOCTYPESystemIdentifier,
+    AbruptDOCTYPESystemIdentifier,
+    UnexpectedCharacterAfterDOCTYPESystemIdentifier,
+    EofInCDATA,
 }
 
 
