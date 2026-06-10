@@ -20,6 +20,10 @@ ParseError :: enum {
     UnexpectedSolidusInTag,
     DuplicateAttribute,
     UnexpectedCharacterInUnquotedAttributeValue,
+    IncorrectlyOpenedComment,
+    AbruptClosingOfEmptyComment,
+    EofInComment,
+    NestedComment,
 }
 
 

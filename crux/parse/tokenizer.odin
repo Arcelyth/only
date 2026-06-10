@@ -12,11 +12,6 @@ DOCTYPE_Token :: struct {
     force_quirks: bool,
 }
 
-Attribute :: struct {
-    name: string,
-    value: string,
-}
-
 Start_Token :: struct {
     tag_name: string,
     self_closing: bool,
@@ -156,6 +151,7 @@ Tokenizer :: struct {
     current_attr_value: strings.Builder,
     current_attr_dup: bool,
     has_current_attr: bool,
+    comment_data_builder: strings.Builder,
 }
 
 new_tokenizer :: proc(input: ^InputStream, on_error: ParseErrorProc = nil) -> Tokenizer {
@@ -222,6 +218,14 @@ emit_current_tag :: proc(t: ^Tokenizer) {
 	}
 }
 
+emit_current_comment :: proc(t: ^Tokenizer) {
+	#partial switch &tok in t.current_token {
+	case Comment_Token:
+		tok.data = strings.clone(strings.to_string(t.comment_data_builder))
+		emit(tok)
+	}
+}
+
 // ----- create
 create_start_tag :: proc(t: ^Tokenizer, name: string) {
 	strings.builder_reset(&t.tag_name_builder)
@@ -239,6 +243,12 @@ create_comment :: proc(t: ^Tokenizer, data: string) {
 	strings.builder_reset(&t.tag_name_builder)
 	strings.write_string(&t.tag_name_builder, data)
 	t.current_token = Comment_Token{}
+}
+
+create_comment_token :: proc(t: ^Tokenizer, data: string) {
+	t.current_token = Comment_Token{}
+	strings.builder_reset(&t.comment_data_builder)
+	strings.write_string(&t.comment_data_builder, data)
 }
 
 append_to_tag_name :: proc(t: ^Tokenizer, c: rune) {
@@ -261,6 +271,10 @@ is_appropriate_end_tag :: proc(t: ^Tokenizer) -> bool {
 	case:
 		return false
 	}
+}
+
+append_to_comment_data :: proc(t: ^Tokenizer, c: rune) {
+	strings.write_rune(&t.comment_data_builder, c)
 }
 
 // ----- attr
@@ -1338,6 +1352,179 @@ step_tokenizer :: proc(t: ^Tokenizer) {
 			if t.on_error != nil do t.on_error(.UnexpectedSolidusInTag, c)
 			reconsume(t.input)
 			t.state = .BeforeAttributeName
+		}
+
+    // https://html.spec.whatwg.org/multipage/parsing.html#bogus-comment-state
+	case .BogusComment:
+		if is_eof {
+			emit_current_comment(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '>':
+			t.state = .Data
+			emit_current_comment(t)
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_comment_data(t, '\uFFFD')
+		case:
+			append_to_comment_data(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state 
+	case .MarkupDeclarationOpen:
+		if match(t.input, "--") {
+			consume_n(t.input, 2)
+			create_comment_token(t, "")
+			t.state = .CommentStart
+		} else if match_insensitive(t.input, "DOCTYPE") {
+			consume_n(t.input, 7)
+			t.state = .DOCTYPE
+		} else if match(t.input, "[CDATA[") {
+            // ---TODO---
+		} else {
+			if t.on_error != nil do t.on_error(.IncorrectlyOpenedComment, c)
+			create_comment_token(t, "")
+			reconsume(t.input)
+			t.state = .BogusComment
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-start-state
+	case .CommentStart:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .Comment
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .CommentStartDash
+		case '>':
+			if t.on_error != nil do t.on_error(.AbruptClosingOfEmptyComment, c)
+			t.state = .Data
+			emit_current_comment(t)
+		case:
+			reconsume(t.input)
+			t.state = .Comment
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-start-dash-state
+	case .CommentStartDash:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInComment, c)
+			emit_current_comment(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .CommentEnd
+		case '>':
+			if t.on_error != nil do t.on_error(.AbruptClosingOfEmptyComment, c)
+			t.state = .Data
+			emit_current_comment(t)
+		case:
+			append_to_comment_data(t, '-')
+			reconsume(t.input)
+			t.state = .Comment
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-state
+	case .Comment:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInComment, c)
+			emit_current_comment(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '<':
+			append_to_comment_data(t, '<')
+			t.state = .CommentLessThanSign
+		case '-':
+			t.state = .CommentEndDash
+		case 0x0000:
+			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
+			append_to_comment_data(t, '\uFFFD')
+		case:
+			append_to_comment_data(t, c)
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-state
+	case .CommentLessThanSign:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .Comment
+			return
+		}
+		switch c {
+		case '!':
+			append_to_comment_data(t, '!')
+			t.state = .CommentLessThanSignBang
+		case '<':
+			append_to_comment_data(t, '<')
+		case:
+			reconsume(t.input)
+			t.state = .Comment
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-bang-state
+	case .CommentLessThanSignBang:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .Comment
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .CommentLessThanSignBangDash
+		case:
+			reconsume(t.input)
+			t.state = .Comment
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-bang-dash-state
+	case .CommentLessThanSignBangDash:
+		if is_eof {
+			reconsume(t.input)
+			t.state = .CommentEndDash
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .CommentLessThanSignBangDashDash
+		case:
+			reconsume(t.input)
+			t.state = .CommentEndDash
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-bang-dash-dash-state
+	case .CommentLessThanSignBangDashDash:
+		if is_eof || c == '>' {
+			reconsume(t.input)
+			t.state = .CommentEnd
+		} else {
+			if t.on_error != nil do t.on_error(.NestedComment, c)
+			reconsume(t.input)
+			t.state = .CommentEnd
+		}
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-end-dash-state
+	case .CommentEndDash:
+		if is_eof {
+			if t.on_error != nil do t.on_error(.EofInComment, c)
+			emit_current_comment(t)
+			emit_eof()
+			return
+		}
+		switch c {
+		case '-':
+			t.state = .CommentEnd
+		case:
+			append_to_comment_data(t, '-')
+			reconsume(t.input)
+			t.state = .Comment
 		}
     }
 }

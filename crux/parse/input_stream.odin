@@ -72,6 +72,39 @@ reconsume :: proc(input: ^InputStream) {
 	else do input.current = nil
 }
 
+// No consume.
+match :: proc(input: ^InputStream, s: string) -> bool {
+	i := 0
+	for r in s {
+		if input.next + i >= len(input.content) do return false
+		if input.content[input.next + i] != r do return false
+		i += 1
+	}
+	return true
+}
+
+match_insensitive :: proc(input: ^InputStream, s: string) -> bool {
+	i := 0
+	for r in s {
+		if input.next + i >= len(input.content) do return false
+		
+		c1 := input.content[input.next + i]
+		c2 := r
+		if c1 >= 'A' && c1 <= 'Z' do c1 += 0x20
+		if c2 >= 'A' && c2 <= 'Z' do c2 += 0x20
+		
+		if c1 != c2 do return false
+		i += 1
+	}
+	return true
+}
+
+consume_n :: proc(input: ^InputStream, n: int) {
+	for i := 0; i < n; i += 1 {
+		consume(input)
+	}
+}
+
 set_insertion_point :: proc(input: ^InputStream) {
     input.insertion_point = input.next
 }
