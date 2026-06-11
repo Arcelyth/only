@@ -51,6 +51,7 @@ Parser :: struct {
     scripting_mode: ScriptingMode,
 	frameset_ok: bool,
     tokenizer: Tokenizer,
+    foster_parenting: bool,
 }
 
 new_parser :: proc() {

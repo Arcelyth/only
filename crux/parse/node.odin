@@ -27,4 +27,6 @@ Element :: struct {
     local_name: string,
     attrs: [dynamic]DOM_Attribute,
     parent: ^Element,
+    children: [dynamic]^Element,
+    template_contents: ^Element, 
 }
