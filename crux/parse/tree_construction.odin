@@ -167,3 +167,109 @@ appropriate_place_for_inserting_node :: proc(p: ^Parser, override_target: ^Eleme
 
 	return loc
 }
+
+// TODO
+CustomElementRegistry :: struct {}
+CustomElementDefinition :: struct {}
+
+look_up_custom_element_registry :: proc(node: ^Element) -> CustomElementRegistry {
+    return CustomElementRegistry{}  
+}
+
+look_up_custom_element_definition :: proc(registry: CustomElementRegistry, namespace: Namespace, local_name: string, is: Maybe(string)) -> Maybe(CustomElementDefinition) {
+    return nil 
+}
+
+reset_algorithm :: proc(el: ^Element) {
+    // TODO
+}
+
+is_in_same_tree :: proc(intended_parent: ^Element, form_ptr: ^Element) -> bool {
+	if intended_parent == nil || form_ptr == nil do return false
+	return true 
+}
+
+// https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
+create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namespace, intended_parent: ^Element) -> ^Element {
+	local_name := tok.tag_name 
+
+	is_attr_value := ""
+	for attr in tok.attrs {
+		if attr.name == "is" {
+			is_attr_value = attr.value
+			break
+		}
+	}
+
+	registry := look_up_custom_element_registry(intended_parent)
+	definition := look_up_custom_element_definition(registry, namespace, local_name, is_attr_value)
+
+	will_execute_script := (definition != nil) && !p.fragment_case
+
+	if will_execute_script {
+		// TODO: 9
+	}
+
+	el := new(Element)
+	el.namespace = namespace
+	el.local_name = local_name
+	el.is_value = is_attr_value
+	el.attrs = make([dynamic]DOM_Attribute)
+
+	if el.namespace == .HTML && el.local_name == "template" {
+		el.template_contents = new(Element)
+		el.template_contents.namespace = .HTML
+		el.template_contents.local_name = "#document-fragment"
+		el.template_contents.attrs = make([dynamic]DOM_Attribute)
+	}
+
+	append_attrs_to_element(el, tok.attrs)
+
+	if will_execute_script {
+		// TODO: 12 
+	}
+
+	if v, ok := element_has_attr_in_namespace(el, .XMLNS, "xmlns"); ok {
+		if v != namespace_to_string(el.namespace) {
+			// TODO: 13 
+		}
+	}
+	if v, ok := element_has_attr_in_namespace(el, .XMLNS, "xmlns:xlink"); ok {
+		if v != "http://www.w3.org/1999/xlink" {
+			// TODO: 14 
+		}
+	}
+
+	if is_resettable_element(el) && !is_form_associated_custom_element(el) {
+		reset_algorithm(el)
+	}
+
+	if is_form_associated_element(el) &&
+	   !is_form_associated_custom_element(el) &&
+	   p.form_element_pointer != nil {
+
+		has_template := false
+		for node in p.open_elements {
+			if node != nil && node.namespace == .HTML && node.local_name == "template" {
+				has_template = true
+				break
+			}
+		}
+
+		if !has_template {
+			has_form_attr := false
+			for attr in el.attrs {
+				if attr.name == "form" {
+					has_form_attr = true
+					break
+				}
+			}
+			if !has_form_attr && is_in_same_tree(intended_parent, p.form_element_pointer) {
+				associate_element_with_form(p.form_element_pointer, el)
+				el.parser_inserted = true
+			}
+		}
+	}
+
+	return el
+}
