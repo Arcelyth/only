@@ -15,6 +15,12 @@ Attribute :: struct {
     value: string,
 }
 
+DOM_Attribute :: struct {
+    name: string,
+    namespace: Namespace,
+    value: string,
+}
+
 Element :: struct {
     namespace: Namespace,
     prefix: string,
