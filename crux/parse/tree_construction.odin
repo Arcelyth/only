@@ -180,104 +180,122 @@ appropriate_place_for_inserting_node :: proc(p: ^Parser, override_target: ^Node 
 }
 
 
-//look_up_custom_element_registry :: proc(node: ^Element) -> CustomElementRegistry {
-//    return CustomElementRegistry{}  
-//}
-//
-//look_up_custom_element_definition :: proc(registry: CustomElementRegistry, namespace: Namespace, local_name: string, is: Maybe(string)) -> Maybe(CustomElementDefinition) {
-//    return nil 
-//}
-//
-//reset_algorithm :: proc(el: ^Element) {
-//    // TODO
-//}
-//
-//is_in_same_tree :: proc(intended_parent: ^Element, form_ptr: ^Element) -> bool {
-//	if intended_parent == nil || form_ptr == nil do return false
-//	return true 
-//}
-//
-//// https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
-//create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namespace, intended_parent: ^Element) -> ^Element {
-//	local_name := tok.tag_name 
-//
-//	is_attr_value := ""
-//	for attr in tok.attrs {
-//		if attr.name == "is" {
-//			is_attr_value = attr.value
-//			break
-//		}
-//	}
-//
-//	registry := look_up_custom_element_registry(intended_parent)
-//	definition := look_up_custom_element_definition(registry, namespace, local_name, is_attr_value)
-//
-//	will_execute_script := (definition != nil) && !p.fragment_case
-//
-//	if will_execute_script {
-//		// TODO: 9
-//	}
-//
-//	el := new(Element)
-//	el.namespace = namespace
-//	el.local_name = local_name
-//	el.is_value = is_attr_value
-//	el.attrs = make([dynamic]DOM_Attribute)
-//
-//	if el.namespace == .HTML && el.local_name == "template" {
-//		el.template_contents = new(Element)
-//		el.template_contents.namespace = .HTML
-//		el.template_contents.local_name = "#document-fragment"
-//		el.template_contents.attrs = make([dynamic]DOM_Attribute)
-//	}
-//
-//	append_attrs_to_element(el, tok.attrs)
-//
-//	if will_execute_script {
-//		// TODO: 12 
-//	}
-//
-//	if v, ok := element_has_attr_in_namespace(el, .XMLNS, "xmlns"); ok {
-//		if v != namespace_to_string(el.namespace) {
-//			// TODO: 13 
-//		}
-//	}
-//	if v, ok := element_has_attr_in_namespace(el, .XMLNS, "xmlns:xlink"); ok {
-//		if v != "http://www.w3.org/1999/xlink" {
-//			// TODO: 14 
-//		}
-//	}
-//
-//	if is_resettable_element(el) && !is_form_associated_custom_element(el) {
-//		reset_algorithm(el)
-//	}
-//
-//	if is_form_associated_element(el) &&
-//	   !is_form_associated_custom_element(el) &&
-//	   p.form_element_pointer != nil {
-//
-//		has_template := false
-//		for node in p.open_elements {
-//			if node != nil && node.namespace == .HTML && node.local_name == "template" {
-//				has_template = true
-//				break
-//			}
-//		}
-//
-//		if !has_template {
-//			has_form_attr := false
-//			for attr in el.attrs {
-//				if attr.name == "form" {
-//					has_form_attr = true
-//					break
-//				}
-//			}
-//			if !has_form_attr && is_in_same_tree(intended_parent, p.form_element_pointer) {
-//				associate_element_with_form(p.form_element_pointer, el)
-//				el.parser_inserted = true
-//			}
-//		}
-//	}
-//
-//	return el
-//}
+look_up_custom_element_registry :: proc(node: ^Node) -> ^Custom_Element_Registry {
+	if node == nil do return nil
+	if el, ok := &node.data.(Element); ok do return el.custom_el_regisry
+	
+	return nil  
+}
+
+look_up_custom_element_definition :: proc(registry: ^Custom_Element_Registry, namespace: Namespace, local_name: string, is: Maybe(string)) -> ^Custom_Element_Definition {
+	return nil 
+}
+
+reset_algorithm :: proc(node: ^Node) {
+	// TODO
+}
+
+is_in_same_tree :: proc(intended_parent: ^Node, form_ptr: ^Node) -> bool {
+	if intended_parent == nil || form_ptr == nil do return false
+	return true 
+}
+
+// https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
+create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namespace, intended_parent: ^Node) -> ^Node {
+	local_name := tok.tag_name 
+
+	is_attr_value: Maybe(string) = nil
+	for attr in tok.attrs {
+		if attr.name == "is" {
+			is_attr_value = attr.value
+			break
+		}
+	}
+
+	registry := look_up_custom_element_registry(intended_parent)
+	definition := look_up_custom_element_definition(registry, namespace, local_name, is_attr_value)
+
+	will_execute_script := (definition != nil) && !p.fragment_case
+
+	if will_execute_script {
+		// TODO: 9
+	}
+
+	node := new(Node)
+	node.type = .Element
+
+	el := Element{}
+	el.namespace = namespace
+	el.local_name = local_name
+
+	if el.namespace == .HTML && el.local_name == "template" {
+		tmpl_contents := new(Node)
+		tmpl_contents.type = .Document_Fragment
+		
+		tmpl_el := Element{}
+		tmpl_el.namespace = .HTML
+		tmpl_el.local_name = "#document-fragment"
+		tmpl_contents.data = tmpl_el
+		
+		el.template_contents = tmpl_contents
+	}
+
+	node.data = el
+
+	append_attrs_to_element(node, tok.attrs)
+
+	if will_execute_script {
+		// TODO: 12 
+	}
+
+	if v, ok := element_has_attr_in_namespace(node, .XMLNS, "xmlns"); ok {
+		if el_ptr, el_ok := node.data.(Element); el_ok {
+			if v != namespace_uri(el_ptr.namespace) {
+				// TODO: 13 
+			}
+		}
+	}
+	if v, ok := element_has_attr_in_namespace(node, .XMLNS, "xmlns:xlink"); ok {
+		if v != "http://www.w3.org/1999/xlink" {
+			// TODO: 14 
+		}
+	}
+
+	if is_resettable_element(node) && !is_form_associated_custom_element(node) {
+		reset_algorithm(node)
+	}
+
+	if is_form_associated_element(node) &&
+	   !is_form_associated_custom_element(node) &&
+	   p.form_element_pointer != nil {
+
+		has_template := false
+		for open_node in p.open_elements {
+			if open_node != nil {
+				if open_el, ok := open_node.data.(Element); ok {
+					if open_el.namespace == .HTML && open_el.local_name == "template" {
+						has_template = true
+						break
+					}
+				}
+			}
+		}
+
+		if !has_template {
+			has_form_attr := false
+			if el_ptr, ok := &node.data.(Element); ok {
+				for attr in el_ptr.attrs {
+					if attr.name == "form" {
+						has_form_attr = true
+						break
+					}
+				}
+				if !has_form_attr && is_in_same_tree(intended_parent, p.form_element_pointer) {
+					associate_element_with_form(p.form_element_pointer, node)
+				}
+			}
+		}
+	}
+
+	return node
+}

@@ -1,11 +1,14 @@
 package parse
 
-append_attrs_to_element :: proc(element: ^Element, token_attrs: [dynamic]Attribute) {
+append_attrs_to_element :: proc(element: ^Node, token_attrs: [dynamic]Attribute) {
     // TODO
 }
 
-element_has_attr_in_namespace :: proc(el: ^Element, ns: Namespace, attr_name: string) -> (string, bool) {
-	if el == nil do return "", false
+element_has_attr_in_namespace :: proc(node: ^Node, ns: Namespace, attr_name: string) -> (string, bool) {
+	if node == nil do return "", false
+    el, is_el := node.data.(Element)
+    if !is_el do return "", false 
+   
 	for attr in el.attrs {
 		if attr.namespace == ns && attr.name == attr_name do return attr.value, true
 	}
@@ -13,29 +16,30 @@ element_has_attr_in_namespace :: proc(el: ^Element, ns: Namespace, attr_name: st
 }
 
 // https://html.spec.whatwg.org/multipage/forms.html#category-reset
-is_resettable_element :: proc(el: ^Element) -> bool {
+is_resettable_element :: proc(node: ^Node) -> bool {
+    el, is_el := node.data.(Element)
+    if !is_el do return false 
 	switch el.local_name {
-	case "input", "output", "select", "textarea":
-		return true
+	case "input", "output", "select", "textarea": return true
 	}
 
-	if is_form_associated_custom_element(el) do return true
+	if is_form_associated_custom_element(node) do return true
 
 	return false
 }
 
 // https://html.spec.whatwg.org/multipage/custom-elements.html#form-associated-custom-element
-is_form_associated_custom_element :: proc(el: ^Element) -> bool {
+is_form_associated_custom_element :: proc(el: ^Node) -> bool {
     // TODO
 	return false
 }
 
-is_form_associated_element :: proc(el: ^Element) -> bool {
+is_form_associated_element :: proc(el: ^Node) -> bool {
     // TODO
 	return false
 }
 
-associate_element_with_form :: proc(form: ^Element, element: ^Element) {
+associate_element_with_form :: proc(form: ^Node, element: ^Node) {
     // TODO
 }
 
@@ -190,5 +194,6 @@ Character_Data :: struct {
 
 // https://html.spec.whatwg.org/multipage/custom-elements.html#custom-elements-api
 Custom_Element_Registry :: struct {}
+Custom_Element_Definition :: struct {}
 
 
