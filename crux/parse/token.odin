@@ -1,5 +1,10 @@
 package parse
 
+Attribute :: struct {
+    name: string,
+    value: string,
+}
+
 DOCTYPE_Token :: struct {
     name: Maybe(string),
     // public identifier    
