@@ -36,13 +36,11 @@ destroy_test_element :: proc(node: ^Node) {
 	for child in node.child_nodes do destroy_test_element(child)
 	delete(node.child_nodes)
 	
-	switch &el in node.data {
+    #partial switch &el in node.data {
 	case Element:
 		if el.template_contents != nil do destroy_test_element(el.template_contents)
 		delete(el.attrs)
 		delete(el.class_list)
-	case Document:
-	case Character_Data:
 	}
 	
 	free(node)

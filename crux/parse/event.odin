@@ -34,5 +34,5 @@ Event_Handler_Proc :: proc(event: ^Event, user_data: rawptr) -> bool
 
 Event_Handler :: struct {
 	handler: Event_Handler_Proc,
-	user_data: rawptr,
+    user_data: rawptr,
 }

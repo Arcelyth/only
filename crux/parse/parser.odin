@@ -52,12 +52,23 @@ Parser :: struct {
 	frameset_ok: bool,
     tokenizer: Tokenizer,
     foster_parenting: bool,
+
+    // active speculative HTML parser
+    active_spec_parser: ^Spec_Parser,
+
+    on_error: ParseErrorProc,
 }
 
+// TODO
+// https://html.spec.whatwg.org/multipage/parsing.html#active-speculative-html-parser
+Spec_Parser :: struct { } 
+
+// TODO
 new_parser :: proc() {
 
 }
 
+// TODO
 destroy_parser :: proc() {
 
 }

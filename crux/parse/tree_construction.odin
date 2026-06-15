@@ -108,7 +108,7 @@ process_token_in_foreign_content :: proc(p: ^Parser, t: Token) {
 
 
 InsertLocation :: struct {
-	parent:       ^Node,
+	parent: ^Node,
 	before_child: ^Node, 
 }
 
@@ -182,7 +182,7 @@ appropriate_place_for_inserting_node :: proc(p: ^Parser, override_target: ^Node 
 
 look_up_custom_element_registry :: proc(node: ^Node) -> ^Custom_Element_Registry {
 	if node == nil do return nil
-	if el, ok := &node.data.(Element); ok do return el.custom_el_regisry
+	if el, ok := &node.data.(Element); ok do return el.custom_el_registry
 	
 	return nil  
 }
@@ -202,6 +202,14 @@ is_in_same_tree :: proc(intended_parent: ^Node, form_ptr: ^Node) -> bool {
 
 // https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
 create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namespace, intended_parent: ^Node) -> ^Node {
+
+    if p.active_spec_parser != nil {
+        return create_spec_mock_element(namespace, tok.tag_name, tok.attrs)
+    }
+    // [Optional] 2.
+
+    document := intended_parent.owner_document
+
 	local_name := tok.tag_name 
 
 	is_attr_value: Maybe(string) = nil
@@ -216,7 +224,6 @@ create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namesp
 	definition := look_up_custom_element_definition(registry, namespace, local_name, is_attr_value)
 
 	will_execute_script := (definition != nil) && !p.fragment_case
-
 	if will_execute_script {
 		// TODO: 9
 	}
@@ -249,15 +256,17 @@ create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namesp
 	}
 
 	if v, ok := element_has_attr_in_namespace(node, .XMLNS, "xmlns"); ok {
-		if el_ptr, el_ok := node.data.(Element); el_ok {
-			if v != namespace_uri(el_ptr.namespace) {
-				// TODO: 13 
+		if el_v, el_ok := node.data.(Element); el_ok {
+			if v != namespace_uri(el_v.namespace) {
+                p.on_error(.CreateElementForToken, 0)
 			}
 		}
 	}
 	if v, ok := element_has_attr_in_namespace(node, .XMLNS, "xmlns:xlink"); ok {
-		if v != "http://www.w3.org/1999/xlink" {
-			// TODO: 14 
+		if el_v, el_ok := node.data.(Element); el_ok {
+			if v != namespace_uri(el_v.namespace) {
+                p.on_error(.CreateElementForToken, 0)
+			}
 		}
 	}
 
@@ -298,4 +307,23 @@ create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namesp
 	}
 
 	return node
+}
+
+insert_element_adjusted_insertion_location :: proc() {
+
+}
+
+insert_foreign_element :: proc() {
+
+}
+
+insert_html_element :: proc() {
+
+}
+
+// https://html.spec.whatwg.org/multipage/parsing.html#create-a-speculative-mock-element
+create_spec_mock_element :: proc(ns: Namespace, local_name: string, attrs: [dynamic]Attribute) -> ^Node {
+    // TODO
+    return new(Node)
+    // optional 6. speculative fetch
 }

@@ -48,6 +48,8 @@ ParseError :: enum {
     NoncharacterCharacterReference,
     ControlCharacterReference,
     UnknownNamedCharacterReference,
+
+    CreateElementForToken,
 }
 
 
