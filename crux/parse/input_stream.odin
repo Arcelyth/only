@@ -1,16 +1,16 @@
 package parse
 
 InputStream :: struct {
-    content: [dynamic]rune,
-    // current input character
-    current: Maybe(rune),
-    // next input character index
-    next: int,
-    insertion_point: Maybe(int),
-    script_created: bool,
-    // document.close() inserted EOF
-    explicit_eof_pending: bool,
-    eof_consumed: bool,
+	content:              [dynamic]rune,
+	// current input character
+	current:              Maybe(rune),
+	// next input character index
+	next:                 int,
+	insertion_point:      Maybe(int),
+	script_created:       bool,
+	// document.close() inserted EOF
+	explicit_eof_pending: bool,
+	eof_consumed:         bool,
 }
 
 new_input_stream :: proc(
@@ -21,7 +21,7 @@ new_input_stream :: proc(
 	content_dyn := make([dynamic]rune, 0, len(content_slice), allocator)
 	append(&content_dyn, ..content_slice)
 
-	return InputStream{
+	return InputStream {
 		content = content_dyn,
 		current = nil,
 		next = 0,
@@ -37,29 +37,29 @@ destroy_input_stream :: proc(input: ^InputStream) {
 }
 
 peek :: proc(input: ^InputStream) -> Maybe(rune) {
-    if input.next < len(input.content) do return input.content[input.next]
+	if input.next < len(input.content) do return input.content[input.next]
 
-    if input.script_created && input.explicit_eof_pending && !input.eof_consumed do return 0
+	if input.script_created && input.explicit_eof_pending && !input.eof_consumed do return 0
 
-    return nil
+	return nil
 }
 
 consume :: proc(input: ^InputStream) -> Maybe(rune) {
-    if input.next < len(input.content) {
-        c := input.content[input.next]
-        input.current = c
-        input.next += 1
-        return c
-    }
+	if input.next < len(input.content) {
+		c := input.content[input.next]
+		input.current = c
+		input.next += 1
+		return c
+	}
 
-    if input.script_created && input.explicit_eof_pending && !input.eof_consumed {
-        input.eof_consumed = true
-        input.current = 0
-        return 0
-    }
+	if input.script_created && input.explicit_eof_pending && !input.eof_consumed {
+		input.eof_consumed = true
+		input.current = 0
+		return 0
+	}
 
-    input.current = nil
-    return nil
+	input.current = nil
+	return nil
 }
 
 reconsume :: proc(input: ^InputStream) {
@@ -87,12 +87,12 @@ match_insensitive :: proc(input: ^InputStream, s: string) -> bool {
 	i := 0
 	for r in s {
 		if input.next + i >= len(input.content) do return false
-		
+
 		c1 := input.content[input.next + i]
 		c2 := r
 		if c1 >= 'A' && c1 <= 'Z' do c1 += 0x20
 		if c2 >= 'A' && c2 <= 'Z' do c2 += 0x20
-		
+
 		if c1 != c2 do return false
 		i += 1
 	}
@@ -106,11 +106,11 @@ consume_n :: proc(input: ^InputStream, n: int) {
 }
 
 set_insertion_point :: proc(input: ^InputStream) {
-    input.insertion_point = input.next
+	input.insertion_point = input.next
 }
 
 clear_insertion_point :: proc(input: ^InputStream) {
-    input.insertion_point = nil
+	input.insertion_point = nil
 }
 
 // document.write()
@@ -121,7 +121,12 @@ write :: proc(input: ^InputStream, data: []rune) {
 	before := input.content[:pos]
 	after := input.content[pos:]
 
-	new_content := make([dynamic]rune, 0, len(before) + len(data) + len(after), input.content.allocator)
+	new_content := make(
+		[dynamic]rune,
+		0,
+		len(before) + len(data) + len(after),
+		input.content.allocator,
+	)
 
 	append(&new_content, ..before)
 	append(&new_content, ..data)
@@ -131,12 +136,10 @@ write :: proc(input: ^InputStream, data: []rune) {
 	input.content = new_content
 	input.insertion_point = pos + len(data)
 
-    if pos < input.next do input.next += len(data)
+	if pos < input.next do input.next += len(data)
 }
 
 // document.close()
 close_document :: proc(input: ^InputStream) {
-    if input.script_created do input.explicit_eof_pending = true
+	if input.script_created do input.explicit_eof_pending = true
 }
-
-

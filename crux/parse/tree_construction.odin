@@ -9,9 +9,10 @@ is_mathml_text_integration_point :: proc(node: ^Node) -> bool {
 	if !is_el do return false
 
 	if el.namespace != .MathML do return false
-	
+
 	switch el.local_name {
-	case "mi", "mo", "mn", "ms", "mtext": return true
+	case "mi", "mo", "mn", "ms", "mtext":
+		return true
 	}
 	return false
 }
@@ -24,20 +25,22 @@ is_html_integration_point :: proc(node: ^Node) -> bool {
 
 	if el.namespace == .SVG {
 		switch el.local_name {
-		case "foreignObject", "desc", "title": return true
+		case "foreignObject", "desc", "title":
+			return true
 		}
 	}
-	
+
 	if el.namespace == .MathML && el.local_name == "annotation-xml" {
 		for attr in el.attrs {
 			if strings.equal_fold(attr.name, "encoding") {
-				if strings.equal_fold(attr.value, "text/html") || strings.equal_fold(attr.value, "application/xhtml+xml") {
+				if strings.equal_fold(attr.value, "text/html") ||
+				   strings.equal_fold(attr.value, "application/xhtml+xml") {
 					return true
 				}
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -100,7 +103,7 @@ dispatch :: proc(p: ^Parser, t: Token) {
 }
 
 process_token_in_html_content :: proc(p: ^Parser, t: Token) {
-    
+
 }
 
 process_token_in_foreign_content :: proc(p: ^Parser, t: Token) {
@@ -108,11 +111,18 @@ process_token_in_foreign_content :: proc(p: ^Parser, t: Token) {
 
 
 InsertLocation :: struct {
-	parent: ^Node,
-	before_child: ^Node, 
+	parent:       ^Node,
+	before_child: ^Node,
 }
 
-last_element_in_open_elements :: proc(p: ^Parser, ns: Namespace, local_name: string) -> (^Node, int) {
+last_element_in_open_elements :: proc(
+	p: ^Parser,
+	ns: Namespace,
+	local_name: string,
+) -> (
+	^Node,
+	int,
+) {
 	#no_bounds_check for i := len(p.open_elements) - 1; i >= 0; i -= 1 {
 		node := p.open_elements[i]
 		el, is_el := node.data.(Element)
@@ -125,21 +135,25 @@ last_element_in_open_elements :: proc(p: ^Parser, ns: Namespace, local_name: str
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
-appropriate_place_for_inserting_node :: proc(p: ^Parser, override_target: ^Node = nil) -> InsertLocation {
+appropriate_place_for_inserting_node :: proc(
+	p: ^Parser,
+	override_target: ^Node = nil,
+) -> InsertLocation {
 	target := override_target if override_target != nil else current_node(p)
 	if target == nil do return InsertLocation{}
-	
+
 	loc := InsertLocation{}
 
 	el, is_el := target.data.(Element)
-	
-	if p.foster_parenting && is_el &&
+
+	if p.foster_parenting &&
+	   is_el &&
 	   el.namespace == .HTML &&
-	   (el.local_name == "table" || 
-		el.local_name == "tbody" || 
-		el.local_name == "tfoot" || 
-		el.local_name == "thead" || 
-		el.local_name == "tr") {
+	   (el.local_name == "table" ||
+			   el.local_name == "tbody" ||
+			   el.local_name == "tfoot" ||
+			   el.local_name == "thead" ||
+			   el.local_name == "tr") {
 
 		last_template, last_template_idx := last_element_in_open_elements(p, .HTML, "template")
 		last_table, last_table_idx := last_element_in_open_elements(p, .HTML, "table")
@@ -170,7 +184,8 @@ appropriate_place_for_inserting_node :: proc(p: ^Parser, override_target: ^Node 
 	}
 
 	if loc.parent != nil {
-		if p_el, ok := loc.parent.data.(Element); ok && p_el.namespace == .HTML && p_el.local_name == "template" {
+		if p_el, ok := loc.parent.data.(Element);
+		   ok && p_el.namespace == .HTML && p_el.local_name == "template" {
 			loc.parent = p_el.template_contents
 			loc.before_child = nil
 		}
@@ -183,12 +198,17 @@ appropriate_place_for_inserting_node :: proc(p: ^Parser, override_target: ^Node 
 look_up_custom_element_registry :: proc(node: ^Node) -> ^Custom_Element_Registry {
 	if node == nil do return nil
 	if el, ok := &node.data.(Element); ok do return el.custom_el_registry
-	
-	return nil  
+
+	return nil
 }
 
-look_up_custom_element_definition :: proc(registry: ^Custom_Element_Registry, namespace: Namespace, local_name: string, is: Maybe(string)) -> ^Custom_Element_Definition {
-	return nil 
+look_up_custom_element_definition :: proc(
+	registry: ^Custom_Element_Registry,
+	namespace: Namespace,
+	local_name: string,
+	is: Maybe(string),
+) -> ^Custom_Element_Definition {
+	return nil
 }
 
 reset_algorithm :: proc(node: ^Node) {
@@ -197,20 +217,25 @@ reset_algorithm :: proc(node: ^Node) {
 
 is_in_same_tree :: proc(intended_parent: ^Node, form_ptr: ^Node) -> bool {
 	if intended_parent == nil || form_ptr == nil do return false
-	return true 
+	return true
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
-create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namespace, intended_parent: ^Node) -> ^Node {
+create_element_for_token :: proc(
+	p: ^Parser,
+	tok: Start_Token,
+	namespace: Namespace,
+	intended_parent: ^Node,
+) -> ^Node {
 
-    if p.active_spec_parser != nil {
-        return create_spec_mock_element(namespace, tok.tag_name, tok.attrs)
-    }
-    // [Optional] 2.
+	if p.active_spec_parser != nil {
+		return create_spec_mock_element(namespace, tok.tag_name, tok.attrs)
+	}
+	// [Optional] 2.
 
-    document := intended_parent.owner_document
+	document := intended_parent.owner_document
 
-	local_name := tok.tag_name 
+	local_name := tok.tag_name
 
 	is_attr_value: Maybe(string) = nil
 	for attr in tok.attrs {
@@ -238,12 +263,12 @@ create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namesp
 	if el.namespace == .HTML && el.local_name == "template" {
 		tmpl_contents := new(Node)
 		tmpl_contents.type = .Document_Fragment
-		
+
 		tmpl_el := Element{}
 		tmpl_el.namespace = .HTML
 		tmpl_el.local_name = "#document-fragment"
 		tmpl_contents.data = tmpl_el
-		
+
 		el.template_contents = tmpl_contents
 	}
 
@@ -252,20 +277,20 @@ create_element_for_token :: proc(p: ^Parser, tok: Start_Token, namespace: Namesp
 	append_attrs_to_element(node, tok.attrs)
 
 	if will_execute_script {
-		// TODO: 12 
+		// TODO: 12
 	}
 
 	if v, ok := element_has_attr_in_namespace(node, .XMLNS, "xmlns"); ok {
 		if el_v, el_ok := node.data.(Element); el_ok {
 			if v != namespace_uri(el_v.namespace) {
-                p.on_error(.CreateElementForToken, 0)
+				p.on_error(.CreateElementForToken, 0)
 			}
 		}
 	}
 	if v, ok := element_has_attr_in_namespace(node, .XMLNS, "xmlns:xlink"); ok {
 		if el_v, el_ok := node.data.(Element); el_ok {
 			if v != namespace_uri(el_v.namespace) {
-                p.on_error(.CreateElementForToken, 0)
+				p.on_error(.CreateElementForToken, 0)
 			}
 		}
 	}
@@ -322,8 +347,12 @@ insert_html_element :: proc() {
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#create-a-speculative-mock-element
-create_spec_mock_element :: proc(ns: Namespace, local_name: string, attrs: [dynamic]Attribute) -> ^Node {
-    // TODO
-    return new(Node)
-    // optional 6. speculative fetch
+create_spec_mock_element :: proc(
+	ns: Namespace,
+	local_name: string,
+	attrs: [dynamic]Attribute,
+) -> ^Node {
+	// TODO
+	return new(Node)
+	// optional 6. speculative fetch
 }

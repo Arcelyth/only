@@ -2,7 +2,13 @@ package encoding
 
 import "core:testing"
 
-expect_sniff :: proc(t: ^testing.T, input: string, opt: EncodingOptions, expected: string, loc := #caller_location) {
+expect_sniff :: proc(
+	t: ^testing.T,
+	input: string,
+	opt: EncodingOptions,
+	expected: string,
+	loc := #caller_location,
+) {
 	res, _ := encoding_sniff(transmute([]byte)input, opt)
 	testing.expect_value(t, res, expected, loc)
 }
@@ -35,8 +41,13 @@ test_meta_prescan :: proc(t: ^testing.T) {
 	expect_sniff(t, `<meta charset="gbk">`, opt, "GBK")
 	expect_sniff(t, `<meta charset=big5>`, opt, "Big5")
 
-	expect_sniff(t, `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">`, opt, "UTF-8")
-	
+	expect_sniff(
+		t,
+		`<meta http-equiv="Content-Type" content="text/html; charset=utf-8">`,
+		opt,
+		"UTF-8",
+	)
+
 	expect_sniff(t, `<meta content="charset=gb18030" http-equiv="content-type">`, opt, "gb18030")
 
 	expect_sniff(t, `<meta content="text/html; charset=gbk">`, opt, "windows-1252")
@@ -51,74 +62,74 @@ test_xml_declaration :: proc(t: ^testing.T) {
 
 	expect_sniff(t, `<?xml version="1.0" encoding="big5"?>`, opt, "Big5")
 	expect_sniff(t, `<?xml encoding='shift_jis'?>`, opt, "Shift_JIS")
-}	
+}
 
 @(test)
 test_priority_cascade :: proc(t: ^testing.T) {
 	payload := "\xEF\xBB\xBF<meta charset='gbk'>"
-	opt_a := EncodingOptions{
+	opt_a := EncodingOptions {
 		override_encoding  = "big5",
 		transport_encoding = "shift_jis",
 	}
-    enc, _ := encoding_sniff(transmute([]byte)payload, opt_a)
+	enc, _ := encoding_sniff(transmute([]byte)payload, opt_a)
 	testing.expect_value(t, enc, "UTF-8")
 
 	no_bom_payload := "<meta charset='gbk'>"
-	opt_b := EncodingOptions{
+	opt_b := EncodingOptions {
 		override_encoding  = "big5",
 		transport_encoding = "shift_jis",
 	}
-    enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_b)
+	enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_b)
 	testing.expect_value(t, enc, "Big5")
 
-	opt_c := EncodingOptions{
+	opt_c := EncodingOptions {
 		transport_encoding = "shift_jis",
 	}
-    enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_c)
+	enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_c)
 	testing.expect_value(t, enc, "Shift_JIS")
 
 	opt_d := EncodingOptions{}
-    enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_d)
+	enc, _ = encoding_sniff(transmute([]byte)no_bom_payload, opt_d)
 	testing.expect_value(t, enc, "GBK")
 
 	clean_payload := "<html>No Tags</html>"
-	opt_e := EncodingOptions{
+	opt_e := EncodingOptions {
 		same_origin_with_parent = true,
 		parent_encoding         = "big5",
 	}
-    enc, _ = encoding_sniff(transmute([]byte)clean_payload, opt_e)
+	enc, _ = encoding_sniff(transmute([]byte)clean_payload, opt_e)
 	testing.expect_value(t, enc, "Big5")
 }
 
 @(test)
 test_get_attr :: proc(t: ^testing.T) {
-    input := `<meta charset="gbk">`
-    attr, i := get_attr(transmute([]byte)input, 6, len(input))
-    a, ok := attr.?
-    testing.expect(t, ok)
-    testing.expect_value(t, a.name, "charset")
-    testing.expect_value(t, a.value, "gbk")
-    testing.expect_value(t, i, 19)
+	input := `<meta charset="gbk">`
+	attr, i := get_attr(transmute([]byte)input, 6, len(input))
+	a, ok := attr.?
+	testing.expect(t, ok)
+	testing.expect_value(t, a.name, "charset")
+	testing.expect_value(t, a.value, "gbk")
+	testing.expect_value(t, i, 19)
 }
 
 @(test)
 test_get_attr_unquoted :: proc(t: ^testing.T) {
-    input := `charset=gbk>`
-    attr, i := get_attr(transmute([]byte)input, 0, len(input))
-    a, ok := attr.?
-    testing.expect(t, ok)
-    testing.expect_value(t, a.name, "charset")
-    testing.expect_value(t, a.value, "gbk")
-    testing.expect_value(t, i, 11)
+	input := `charset=gbk>`
+	attr, i := get_attr(transmute([]byte)input, 0, len(input))
+	a, ok := attr.?
+	testing.expect(t, ok)
+	testing.expect_value(t, a.name, "charset")
+	testing.expect_value(t, a.value, "gbk")
+	testing.expect_value(t, i, 11)
 }
 
 @(test)
 test_get_attr_no_value :: proc(t: ^testing.T) {
-    input := `charset >`
-    attr, i := get_attr(transmute([]byte)input, 0, len(input))
-    a, ok := attr.?
-    testing.expect(t, ok)
-    testing.expect_value(t, a.name, "charset")
-    testing.expect_value(t, a.value, "")
-    testing.expect_value(t, i, 8)
+	input := `charset >`
+	attr, i := get_attr(transmute([]byte)input, 0, len(input))
+	a, ok := attr.?
+	testing.expect(t, ok)
+	testing.expect_value(t, a.name, "charset")
+	testing.expect_value(t, a.value, "")
+	testing.expect_value(t, i, 8)
 }

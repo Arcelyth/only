@@ -19,7 +19,7 @@ reset_test_errors :: proc() {
 test_norm_newline :: proc(t: ^testing.T) {
 	input := "Line1\r\nLine2\rLine3\nLine4\r\r\n"
 	expected := "Line1\nLine2\nLine3\nLine4\n\n"
-	
+
 	result := norm_newline(input)
 	defer delete(result)
 	testing.expect_value(t, result, expected)
@@ -43,8 +43,8 @@ test_preprocess_stream_and_errors :: proc(t: ^testing.T) {
 
 	expected_content := []rune{'a', '\n', 'b', '\n', 'c', 0xD800, 0xFFFF, 0x01, 'd'}
 	testing.expect_value(t, len(stream.content), len(expected_content))
-	
-	for i in 0..<len(expected_content) {
+
+	for i in 0 ..< len(expected_content) {
 		testing.expect_value(t, stream.content[i], expected_content[i])
 	}
 

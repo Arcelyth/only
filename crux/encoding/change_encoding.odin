@@ -38,28 +38,26 @@ same_unicode_prefix :: proc(
 	return old_text == new_text
 }
 
-can_reparse_from_memory :: proc(
-	have_full_body: bool,
-	source_bytes: []byte,
-) -> bool {
+can_reparse_from_memory :: proc(have_full_body: bool, source_bytes: []byte) -> bool {
 	return have_full_body && len(source_bytes) > 0
 }
 
 ChangeEncodingParams :: struct {
-	old_enc: ^string,
-	new_enc: string,
-	confidence: ^Confidence,
-
-	request_method: string,
-	supports_on_the_fly: bool,
-
-	source_bytes: []byte,
-	last_converted_byte_index: int,
-	have_full_body: bool,
-
-	decode_prefix: proc(bytes: []byte, enc: string) -> Maybe(string),
-	reparse_from_memory: proc(new_enc: string),
-	restart_navigate_from_network: proc(new_enc: string, history_replace: bool, skip_sniff: bool) -> bool,
+	old_enc:                       ^string,
+	new_enc:                       string,
+	confidence:                    ^Confidence,
+	request_method:                string,
+	supports_on_the_fly:           bool,
+	source_bytes:                  []byte,
+	last_converted_byte_index:     int,
+	have_full_body:                bool,
+	decode_prefix:                 proc(bytes: []byte, enc: string) -> Maybe(string),
+	reparse_from_memory:           proc(new_enc: string),
+	restart_navigate_from_network: proc(
+		new_enc: string,
+		history_replace: bool,
+		skip_sniff: bool,
+	) -> bool,
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#changing-the-encoding-while-parsing
@@ -69,7 +67,7 @@ change_encoding :: proc(p: ChangeEncodingParams) -> EncodingChangeResult {
 		return .NoChange
 	}
 
-    resolved_new := label_to_name(p.new_enc).? or_else ""
+	resolved_new := label_to_name(p.new_enc).? or_else ""
 	new_enc := norm_for_change(resolved_new)
 	if len(new_enc) == 0 {
 		p.confidence^ = .Certain
@@ -82,7 +80,7 @@ change_encoding :: proc(p: ChangeEncodingParams) -> EncodingChangeResult {
 		return .NoChange
 	}
 
-    // If the decoded prefix is interpreted identically under both encodings and supports on-the-fly switching, then simply switch the decoder.
+	// If the decoded prefix is interpreted identically under both encodings and supports on-the-fly switching, then simply switch the decoder.
 	prefix_end := p.last_converted_byte_index + 1
 	if prefix_end < 0 do prefix_end = 0
 	if prefix_end > len(p.source_bytes) do prefix_end = len(p.source_bytes)
@@ -101,7 +99,7 @@ change_encoding :: proc(p: ChangeEncodingParams) -> EncodingChangeResult {
 		return .RestartedFromMemory
 	}
 
-    if !utils.ascii_eq_ci(p.request_method, "GET") {
+	if !utils.ascii_eq_ci(p.request_method, "GET") {
 		p.confidence^ = .Certain
 		return .IgnoredNewEncoding
 	}

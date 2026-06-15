@@ -34,34 +34,33 @@ ScriptingMode :: enum {
 }
 
 Parser :: struct {
-    // insertion mode
-    insert_mode: InsertionMode,
-    // original insertion mode
-    orig_insert_mode: InsertionMode,
-    // template insertion mode
-    temp_insert_modes: [dynamic]InsertionMode,
-    open_elements: [dynamic]^Node,
-    fragment_case: bool,
-    context_element: ^Node,
+	// insertion mode
+	insert_mode:                InsertionMode,
+	// original insertion mode
+	orig_insert_mode:           InsertionMode,
+	// template insertion mode
+	temp_insert_modes:          [dynamic]InsertionMode,
+	open_elements:              [dynamic]^Node,
+	fragment_case:              bool,
+	context_element:            ^Node,
 	active_formatting_elements: [dynamic]FormattingEntry,
-    // https://html.spec.whatwg.org/multipage/parsing.html#the-element-pointers
-	head_element_pointer: ^Node,
-	form_element_pointer: ^Node,
-    // https://html.spec.whatwg.org/multipage/parsing.html#other-parsing-state-flags
-    scripting_mode: ScriptingMode,
-	frameset_ok: bool,
-    tokenizer: Tokenizer,
-    foster_parenting: bool,
+	// https://html.spec.whatwg.org/multipage/parsing.html#the-element-pointers
+	head_element_pointer:       ^Node,
+	form_element_pointer:       ^Node,
+	// https://html.spec.whatwg.org/multipage/parsing.html#other-parsing-state-flags
+	scripting_mode:             ScriptingMode,
+	frameset_ok:                bool,
+	tokenizer:                  Tokenizer,
+	foster_parenting:           bool,
 
-    // active speculative HTML parser
-    active_spec_parser: ^Spec_Parser,
-
-    on_error: ParseErrorProc,
+	// active speculative HTML parser
+	active_spec_parser:         ^Spec_Parser,
+	on_error:                   ParseErrorProc,
 }
 
 // TODO
 // https://html.spec.whatwg.org/multipage/parsing.html#active-speculative-html-parser
-Spec_Parser :: struct { } 
+Spec_Parser :: struct {}
 
 // TODO
 new_parser :: proc() {
@@ -79,29 +78,29 @@ FormattingEntryKind :: enum {
 }
 
 FormattingEntry :: struct {
-	kind: FormattingEntryKind,
+	kind:    FormattingEntryKind,
 	element: ^Node,
-	token: Token,
+	token:   Token,
 }
 
 current_node :: proc(p: ^Parser) -> ^Node {
-    if len(p.open_elements) == 0 do return nil
-    return p.open_elements[len(p.open_elements)-1]
+	if len(p.open_elements) == 0 do return nil
+	return p.open_elements[len(p.open_elements) - 1]
 }
 
 adjusted_current_node :: proc(p: ^Parser) -> ^Node {
-    if p == nil do return nil
+	if p == nil do return nil
 
-    if p.fragment_case && len(p.open_elements) == 1 && p.context_element != nil {
-        return p.context_element
-    }
+	if p.fragment_case && len(p.open_elements) == 1 && p.context_element != nil {
+		return p.context_element
+	}
 
-    return current_node(p)
+	return current_node(p)
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#reset-the-insertion-mode-appropriately
 reset_insertion_mode_appropriately :: proc(p: ^Parser) {
-	if p == nil || len(p.open_elements) == 0 do return 
+	if p == nil || len(p.open_elements) == 0 do return
 
 	last := false
 	idx := len(p.open_elements) - 1
@@ -176,47 +175,133 @@ reset_insertion_mode_appropriately :: proc(p: ^Parser) {
 is_special_element :: proc(node: ^Node) -> bool {
 	if node == nil do return false
 
-    el, is_el := node.data.(Element)
+	el, is_el := node.data.(Element)
 	if !is_el do return false
 
-    #partial switch el.namespace {
-    case .HTML: 
-        switch el.local_name {
-        case "address", "applet", "area", "article", "aside", "base", "basefont", "bgsound",
-		     "blockquote", "body", "br", "button", "caption", "center", "col", "colgroup",
-		     "dd", "details", "dir", "div", "dl", "dt", "embed", "fieldset", "figcaption",
-		     "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3", "h4", "h5",
-		     "h6", "head", "header", "hgroup", "hr", "html", "iframe", "img", "input",
-		     "keygen", "li", "link", "listing", "main", "marquee", "menu", "meta", "nav",
-		     "noembed", "noframes", "noscript", "object", "ol", "p", "param", "plaintext",
-		     "pre", "script", "search", "section", "select", "source", "style", "summary",
-		     "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "title",
-		     "tr", "track", "ul", "wbr", "xmp":
+	#partial switch el.namespace {
+	case .HTML:
+		switch el.local_name {
+		case "address",
+		     "applet",
+		     "area",
+		     "article",
+		     "aside",
+		     "base",
+		     "basefont",
+		     "bgsound",
+		     "blockquote",
+		     "body",
+		     "br",
+		     "button",
+		     "caption",
+		     "center",
+		     "col",
+		     "colgroup",
+		     "dd",
+		     "details",
+		     "dir",
+		     "div",
+		     "dl",
+		     "dt",
+		     "embed",
+		     "fieldset",
+		     "figcaption",
+		     "figure",
+		     "footer",
+		     "form",
+		     "frame",
+		     "frameset",
+		     "h1",
+		     "h2",
+		     "h3",
+		     "h4",
+		     "h5",
+		     "h6",
+		     "head",
+		     "header",
+		     "hgroup",
+		     "hr",
+		     "html",
+		     "iframe",
+		     "img",
+		     "input",
+		     "keygen",
+		     "li",
+		     "link",
+		     "listing",
+		     "main",
+		     "marquee",
+		     "menu",
+		     "meta",
+		     "nav",
+		     "noembed",
+		     "noframes",
+		     "noscript",
+		     "object",
+		     "ol",
+		     "p",
+		     "param",
+		     "plaintext",
+		     "pre",
+		     "script",
+		     "search",
+		     "section",
+		     "select",
+		     "source",
+		     "style",
+		     "summary",
+		     "table",
+		     "tbody",
+		     "td",
+		     "template",
+		     "textarea",
+		     "tfoot",
+		     "th",
+		     "thead",
+		     "title",
+		     "tr",
+		     "track",
+		     "ul",
+		     "wbr",
+		     "xmp":
 			return true
-        }
-    case .MathML:  
+		}
+	case .MathML:
 		switch el.local_name {
 		case "mi", "mo", "mn", "ms", "mtext", "annotation-xml":
 			return true
 		}
-    case .SVG: 
+	case .SVG:
 		switch el.local_name {
 		case "foreignObject", "desc", "title":
 			return true
 		}
-    }
+	}
 
-    return false
+	return false
 }
 
 is_formatting_element :: proc(node: ^Node) -> bool {
 	if node == nil do return false
 
-    el, is_el := node.data.(Element)
+	el, is_el := node.data.(Element)
 	if !is_el || el.namespace != .HTML do return false
 
 	switch el.local_name {
-	case "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u":
+	case "a",
+	     "b",
+	     "big",
+	     "code",
+	     "em",
+	     "font",
+	     "i",
+	     "nobr",
+	     "s",
+	     "small",
+	     "strike",
+	     "strong",
+	     "tt",
+	     "u":
 		return true
 	}
 
@@ -224,34 +309,43 @@ is_formatting_element :: proc(node: ^Node) -> bool {
 }
 
 is_scope_boundary :: proc(node: ^Node) -> bool {
-    if node == nil do return false
+	if node == nil do return false
 
-    el, is_el := node.data.(Element)
+	el, is_el := node.data.(Element)
 	if !is_el do return false
 
-    #partial switch el.namespace {
-    case .HTML: 
-        switch el.local_name {
-        case "applet", "caption", "html", "table", "td", "th", "marquee", "object", "select", "template":
-            return true
-        }
-    case .MathML: 
-        switch el.local_name {
-        case "mi", "mo", "mn", "ms", "mtext", "annotation-xml":
-            return true
-        }
-    case .SVG: 
-        switch el.local_name {
-        case "foreignObject", "desc", "title":
-            return true
-        } 
-    }
-    return false
+	#partial switch el.namespace {
+	case .HTML:
+		switch el.local_name {
+		case "applet",
+		     "caption",
+		     "html",
+		     "table",
+		     "td",
+		     "th",
+		     "marquee",
+		     "object",
+		     "select",
+		     "template":
+			return true
+		}
+	case .MathML:
+		switch el.local_name {
+		case "mi", "mo", "mn", "ms", "mtext", "annotation-xml":
+			return true
+		}
+	case .SVG:
+		switch el.local_name {
+		case "foreignObject", "desc", "title":
+			return true
+		}
+	}
+	return false
 }
 
 is_list_item_scope_boundary :: proc(node: ^Node) -> bool {
 	if is_scope_boundary(node) do return true
-	
+
 	if el, is_el := node.data.(Element); is_el && el.namespace == .HTML {
 		return el.local_name == "ol" || el.local_name == "ul"
 	}
@@ -273,26 +367,27 @@ is_table_scope_boundary :: proc(node: ^Node) -> bool {
 	if !is_el || el.namespace != .HTML do return false
 
 	switch el.local_name {
-	case "html", "table", "template": return true
+	case "html", "table", "template":
+		return true
 	}
 	return false
 }
 
-has_element_in_scope :: proc(p: ^Parser, target: ^Node, boundary: proc(^Node)->bool) -> bool {
+has_element_in_scope :: proc(p: ^Parser, target: ^Node, boundary: proc(_: ^Node) -> bool) -> bool {
 	if p == nil || target == nil do return false
-	
+
 	target_el, target_is_el := target.data.(Element)
 	if !target_is_el do return false
 
 	for i := len(p.open_elements) - 1; i >= 0; i -= 1 {
 		node := p.open_elements[i]
-		
+
 		if el, is_el := node.data.(Element); is_el {
 			if el.local_name == target_el.local_name && el.namespace == target_el.namespace {
 				return true
 			}
 		}
-		
+
 		if boundary(node) do return false
 	}
 
@@ -303,7 +398,7 @@ has_element_in_scope :: proc(p: ^Parser, target: ^Node, boundary: proc(^Node)->b
 insert_html_element_for_token :: proc(p: ^Parser, token: Token) -> ^Node {
 	node := new(Node)
 	el := Element{}
-	
+
 	node.data = el
 	return node
 }
@@ -321,7 +416,7 @@ are_attributes_equal :: proc(a, b: []Attr) -> bool {
 		for attr_b, idx in b {
 			if visited[idx] do continue
 
-			if attr_a.name == attr_b.name && 
+			if attr_a.name == attr_b.name &&
 			   attr_a.namespace == attr_b.namespace &&
 			   attr_a.value == attr_b.value {
 				visited[idx] = true
@@ -337,7 +432,7 @@ are_attributes_equal :: proc(a, b: []Attr) -> bool {
 
 push_active_formatting_element :: proc(p: ^Parser, node: ^Node, tok: Token) {
 	if p == nil || node == nil do return
-	
+
 	el_data, is_el := node.data.(Element)
 	if !is_el do return
 
@@ -355,10 +450,10 @@ push_active_formatting_element :: proc(p: ^Parser, node: ^Node, tok: Token) {
 	for i := since_marker; i < len(p.active_formatting_elements); i += 1 {
 		entry := p.active_formatting_elements[i]
 		if entry.kind != .Element do continue
-		
+
 		e1_data, ok := entry.element.data.(Element)
 		if !ok do continue
-		
+
 		if e1_data.local_name == el_data.local_name && e1_data.namespace == el_data.namespace {
 			if are_attributes_equal(e1_data.attrs, el_data.attrs) {
 				same_count += 1
@@ -371,16 +466,15 @@ push_active_formatting_element :: proc(p: ^Parser, node: ^Node, tok: Token) {
 		ordered_remove(&p.active_formatting_elements, earliest_same)
 	}
 
-	append(&p.active_formatting_elements, FormattingEntry{
-		kind = .Element,
-		element = node,
-		token = tok,
-	})
+	append(
+		&p.active_formatting_elements,
+		FormattingEntry{kind = .Element, element = node, token = tok},
+	)
 }
 
 push_formatting_marker :: proc(p: ^Parser) {
 	if p == nil do return
-	append(&p.active_formatting_elements, FormattingEntry{ kind = .Marker })
+	append(&p.active_formatting_elements, FormattingEntry{kind = .Marker})
 }
 
 node_in_open_elements :: proc(p: ^Parser, node: ^Node) -> bool {
@@ -394,7 +488,7 @@ node_in_open_elements :: proc(p: ^Parser, node: ^Node) -> bool {
 reconstruct_active_formatting_elements :: proc(p: ^Parser) {
 	if p == nil || len(p.active_formatting_elements) == 0 do return
 
-	last := p.active_formatting_elements[len(p.active_formatting_elements)-1]
+	last := p.active_formatting_elements[len(p.active_formatting_elements) - 1]
 
 	if last.kind == .Marker do return
 	if last.kind == .Element && node_in_open_elements(p, last.element) do return
@@ -424,7 +518,7 @@ reconstruct_active_formatting_elements :: proc(p: ^Parser) {
 		}
 
 		new_node := insert_html_element_for_token(p, entry.token)
-		
+
 		p.active_formatting_elements[entry_idx].element = new_node
 
 		if entry_idx == len(p.active_formatting_elements) - 1 do break

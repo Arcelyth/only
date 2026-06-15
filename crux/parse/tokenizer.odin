@@ -1,134 +1,124 @@
 package parse
 
-import "core:strings"
 import "../utils"
+import "core:strings"
 
 TokenizerState :: enum {
-    Data,
-    RCDATA,
-    RAWTEXT,
-    ScriptData,
-    PLAINTEXT,
-
-    TagOpen,
-    EndTagOpen,
-    TagName,
-
-    RCDATALessThanSign,
-    RCDATAEndTagOpen,
-    RCDATAEndTagName,
-
-    RAWTEXTLessThanSign,
-    RAWTEXTEndTagOpen,
-    RAWTEXTEndTagName,
-
-    ScriptDataLessThanSign,
-    ScriptDataEndTagOpen,
-    ScriptDataEndTagName,
-    ScriptDataEscapeStart,
-    ScriptDataEscapeStartDash,
-    ScriptDataEscaped,
-    ScriptDataEscapedDash,
-    ScriptDataEscapedDashDash,
-    ScriptDataEscapedLessThanSign,
-    ScriptDataEscapedEndTagOpen,
-    ScriptDataEscapedEndTagName,
-    ScriptDataDoubleEscapeStart,
-    ScriptDataDoubleEscaped,
-    ScriptDataDoubleEscapedDash,
-    ScriptDataDoubleEscapedDashDash,
-    ScriptDataDoubleEscapedLessThanSign,
-    ScriptDataDoubleEscapeEnd,
-
-    BeforeAttributeName,
-    AttributeName,
-    AfterAttributeName,
-    BeforeAttributeValue,
-    AttributeValueDoubleQuoted,
-    AttributeValueSingleQuoted,
-    AttributeValueUnquoted,
-    AfterAttributeValueQuoted,
-    SelfClosingStartTag,
-
-    BogusComment,
-    MarkupDeclarationOpen,
-
-    CommentStart,
-    CommentStartDash,
-    Comment,
-    CommentLessThanSign,
-    CommentLessThanSignBang,
-    CommentLessThanSignBangDash,
-    CommentLessThanSignBangDashDash,
-    CommentEndDash,
-    CommentEnd,
-    CommentEndBang,
-
-    DOCTYPE,
-    BeforeDOCTYPEName,
-    DOCTYPEName,
-    AfterDOCTYPEName,
-    AfterDOCTYPEPublicKeyword,
-    BeforeDOCTYPEPublicIdentifier,
-    DOCTYPEPublicIdentifierDoubleQuoted,
-    DOCTYPEPublicIdentifierSingleQuoted,
-    AfterDOCTYPEPublicIdentifier,
-    BetweenDOCTYPEPublicAndSystemIdentifiers,
-    AfterDOCTYPESystemKeyword,
-    BeforeDOCTYPESystemIdentifier,
-    DOCTYPESystemIdentifierDoubleQuoted,
-    DOCTYPESystemIdentifierSingleQuoted,
-    AfterDOCTYPESystemIdentifier,
-    BogusDOCTYPE,
-
-    CDATASection,
-    CDATASectionBracket,
-    CDATASectionEnd,
-
-    CharacterReference,
-    NamedCharacterReference,
-    AmbiguousAmpersand,
-    NumericCharacterReference,
-    HexadecimalCharacterReferenceStart,
-    DecimalCharacterReferenceStart,
-    HexadecimalCharacterReference,
-    DecimalCharacterReference,
-    NumericCharacterReferenceEnd,
+	Data,
+	RCDATA,
+	RAWTEXT,
+	ScriptData,
+	PLAINTEXT,
+	TagOpen,
+	EndTagOpen,
+	TagName,
+	RCDATALessThanSign,
+	RCDATAEndTagOpen,
+	RCDATAEndTagName,
+	RAWTEXTLessThanSign,
+	RAWTEXTEndTagOpen,
+	RAWTEXTEndTagName,
+	ScriptDataLessThanSign,
+	ScriptDataEndTagOpen,
+	ScriptDataEndTagName,
+	ScriptDataEscapeStart,
+	ScriptDataEscapeStartDash,
+	ScriptDataEscaped,
+	ScriptDataEscapedDash,
+	ScriptDataEscapedDashDash,
+	ScriptDataEscapedLessThanSign,
+	ScriptDataEscapedEndTagOpen,
+	ScriptDataEscapedEndTagName,
+	ScriptDataDoubleEscapeStart,
+	ScriptDataDoubleEscaped,
+	ScriptDataDoubleEscapedDash,
+	ScriptDataDoubleEscapedDashDash,
+	ScriptDataDoubleEscapedLessThanSign,
+	ScriptDataDoubleEscapeEnd,
+	BeforeAttributeName,
+	AttributeName,
+	AfterAttributeName,
+	BeforeAttributeValue,
+	AttributeValueDoubleQuoted,
+	AttributeValueSingleQuoted,
+	AttributeValueUnquoted,
+	AfterAttributeValueQuoted,
+	SelfClosingStartTag,
+	BogusComment,
+	MarkupDeclarationOpen,
+	CommentStart,
+	CommentStartDash,
+	Comment,
+	CommentLessThanSign,
+	CommentLessThanSignBang,
+	CommentLessThanSignBangDash,
+	CommentLessThanSignBangDashDash,
+	CommentEndDash,
+	CommentEnd,
+	CommentEndBang,
+	DOCTYPE,
+	BeforeDOCTYPEName,
+	DOCTYPEName,
+	AfterDOCTYPEName,
+	AfterDOCTYPEPublicKeyword,
+	BeforeDOCTYPEPublicIdentifier,
+	DOCTYPEPublicIdentifierDoubleQuoted,
+	DOCTYPEPublicIdentifierSingleQuoted,
+	AfterDOCTYPEPublicIdentifier,
+	BetweenDOCTYPEPublicAndSystemIdentifiers,
+	AfterDOCTYPESystemKeyword,
+	BeforeDOCTYPESystemIdentifier,
+	DOCTYPESystemIdentifierDoubleQuoted,
+	DOCTYPESystemIdentifierSingleQuoted,
+	AfterDOCTYPESystemIdentifier,
+	BogusDOCTYPE,
+	CDATASection,
+	CDATASectionBracket,
+	CDATASectionEnd,
+	CharacterReference,
+	NamedCharacterReference,
+	AmbiguousAmpersand,
+	NumericCharacterReference,
+	HexadecimalCharacterReferenceStart,
+	DecimalCharacterReferenceStart,
+	HexadecimalCharacterReference,
+	DecimalCharacterReference,
+	NumericCharacterReferenceEnd,
 }
 
 Tokenizer :: struct {
-	input: ^InputStream,
-    state: TokenizerState,
-	return_state: TokenizerState,
-    pause_flag: bool,
-	on_error: ParseErrorProc,
-    current_token: Token, 
-    tag_name_builder: strings.Builder, 
-    // temporary buffer
-    temp_buffer: strings.Builder,
-    last_start_tag_name: string,
-    current_attr_name: strings.Builder,
-    current_attr_value: strings.Builder,
-    current_attr_dup: bool,
-    has_current_attr: bool,
-    comment_data_builder: strings.Builder,
-    doctype_name_builder: strings.Builder,
+	input:                     ^InputStream,
+	state:                     TokenizerState,
+	return_state:              TokenizerState,
+	pause_flag:                bool,
+	on_error:                  ParseErrorProc,
+	current_token:             Token,
+	tag_name_builder:          strings.Builder,
+	// temporary buffer
+	temp_buffer:               strings.Builder,
+	last_start_tag_name:       string,
+	current_attr_name:         strings.Builder,
+	current_attr_value:        strings.Builder,
+	current_attr_dup:          bool,
+	has_current_attr:          bool,
+	comment_data_builder:      strings.Builder,
+	doctype_name_builder:      strings.Builder,
 	doctype_public_id_builder: strings.Builder,
-	doctype_public_id_set: bool,
-    doctype_system_id_builder: strings.Builder,
-	doctype_system_id_set: bool,
-    // character reference code
-    char_ref_code: rune,
+	doctype_public_id_set:     bool,
+	doctype_system_id_builder: strings.Builder,
+	doctype_system_id_set:     bool,
+	// character reference code
+	char_ref_code:             rune,
 }
 
 new_tokenizer :: proc(input: ^InputStream, on_error: ParseErrorProc = nil) -> Tokenizer {
-	return Tokenizer{ 
-        input = input, 
-        state = .Data, 
-        return_state = .Data, 
-        pause_flag = false, 
-        on_error = on_error,
-    }
+	return Tokenizer {
+		input = input,
+		state = .Data,
+		return_state = .Data,
+		pause_flag = false,
+		on_error = on_error,
+	}
 }
 
 destroy_tokenizer :: proc(t: ^Tokenizer) {
@@ -144,18 +134,18 @@ destroy_tokenizer :: proc(t: ^Tokenizer) {
 
 // ----- emit
 emit :: proc(p: ^Parser, tok: Token) {
-    dispatch(p, tok)
+	dispatch(p, tok)
 }
 
 emit_char :: proc(p: ^Parser, c: rune) {
-    emit(p, Character_Token{c})
+	emit(p, Character_Token{c})
 }
 
 emit_eof :: proc(p: ^Parser) {
-    emit(p, EOF_Token{})
+	emit(p, EOF_Token{})
 }
 
-emit_temp_buffer :: proc(p: ^Parser) { 
+emit_temp_buffer :: proc(p: ^Parser) {
 	buf_str := strings.to_string(p.tokenizer.temp_buffer)
 	for r in buf_str {
 		emit_char(p, r)
@@ -163,8 +153,8 @@ emit_temp_buffer :: proc(p: ^Parser) {
 }
 
 emit_cur_tag :: proc(p: ^Parser) {
-    t := &p.tokenizer
-    flush_cur_attr(t)
+	t := &p.tokenizer
+	flush_cur_attr(t)
 	final_str := strings.to_string(t.tag_name_builder)
 
 	#partial switch &tok in t.current_token {
@@ -182,7 +172,7 @@ emit_cur_tag :: proc(p: ^Parser) {
 }
 
 emit_cur_comment :: proc(p: ^Parser) {
-    t := &p.tokenizer
+	t := &p.tokenizer
 	#partial switch &tok in t.current_token {
 	case Comment_Token:
 		tok.data = strings.clone(strings.to_string(t.comment_data_builder))
@@ -191,27 +181,26 @@ emit_cur_comment :: proc(p: ^Parser) {
 }
 
 emit_cur_doctype :: proc(p: ^Parser) {
-    t := &p.tokenizer
+	t := &p.tokenizer
 	#partial switch &tok in t.current_token {
 	case DOCTYPE_Token:
 		tok.name = strings.clone(strings.to_string(t.doctype_name_builder))
-		
+
 		if t.doctype_public_id_set {
 			tok.public_ident = strings.clone(strings.to_string(t.doctype_public_id_builder))
 		} else {
 			tok.public_ident = nil
 		}
-		
+
 		if t.doctype_system_id_set {
 			tok.sys_ident = strings.clone(strings.to_string(t.doctype_system_id_builder))
 		} else {
 			tok.sys_ident = nil
 		}
-		
+
 		emit(p, tok)
 	}
 }
-
 
 
 // ----- create
@@ -263,14 +252,16 @@ create_comment :: proc(t: ^Tokenizer, data: string) {
 flush_cur_attr :: proc(t: ^Tokenizer) {
 	if !t.has_current_attr do return
 	if !t.current_attr_dup {
-		attr := Attribute{
-			name = strings.clone(strings.to_string(t.current_attr_name)),
+		attr := Attribute {
+			name  = strings.clone(strings.to_string(t.current_attr_name)),
 			value = strings.clone(strings.to_string(t.current_attr_value)),
 		}
 
 		#partial switch &tok in t.current_token {
-		case Start_Token: append(&tok.attrs, attr)
-		case End_Token: append(&tok.attrs, attr)
+		case Start_Token:
+			append(&tok.attrs, attr)
+		case End_Token:
+			append(&tok.attrs, attr)
 		}
 	}
 
@@ -354,68 +345,78 @@ append_to_doctype_public_ident :: proc(t: ^Tokenizer, c: rune) {
 
 set_self_closing_flag :: proc(t: ^Tokenizer) {
 	#partial switch &tok in t.current_token {
-	case Start_Token: tok.self_closing = true
-	case End_Token: tok.self_closing = true
+	case Start_Token:
+		tok.self_closing = true
+	case End_Token:
+		tok.self_closing = true
 	}
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#charref-in-attribute
 is_consumed_as_part_of_attr :: proc(t: ^Tokenizer) -> bool {
-    return t.return_state == .AttributeValueDoubleQuoted || 
-           t.return_state == .AttributeValueSingleQuoted || 
-           t.return_state == .AttributeValueUnquoted
+	return(
+		t.return_state == .AttributeValueDoubleQuoted ||
+		t.return_state == .AttributeValueSingleQuoted ||
+		t.return_state == .AttributeValueUnquoted \
+	)
 }
 
 // https://html.spec.whatwg.org/multipage/parsing.html#flush-code-points-consumed-as-a-character-reference
 flush_code_points_consumed_as_char_ref :: proc(p: ^Parser) {
-    t := &p.tokenizer
-    s := strings.to_string(t.temp_buffer)
-    for cp in s {
-        if is_consumed_as_part_of_attr(t) do append_to_cur_attr_val(t, cp)
-        else do emit_char(p, cp)
-    }
+	t := &p.tokenizer
+	s := strings.to_string(t.temp_buffer)
+	for cp in s {
+		if is_consumed_as_part_of_attr(t) do append_to_cur_attr_val(t, cp)
+		else do emit_char(p, cp)
+	}
 }
 
-try_consume_named_char_ref :: proc(t: ^Tokenizer) -> (match_found: bool, is_last_semicolon: bool, matched_str: string) {
-    longest_match_len := 0
-    longest_match_str := ""
-    longest_match_name := ""
-    has_semicolon := false
+try_consume_named_char_ref :: proc(
+	t: ^Tokenizer,
+) -> (
+	match_found: bool,
+	is_last_semicolon: bool,
+	matched_str: string,
+) {
+	longest_match_len := 0
+	longest_match_str := ""
+	longest_match_name := ""
+	has_semicolon := false
 
-    for name, value in named_char_ref_map {
-        if len(name) > longest_match_len {
-            if match(t.input, name) {
-                longest_match_len = len(name)
-                longest_match_str = value
-                longest_match_name = name
-                has_semicolon = strings.has_suffix(name, ";")
-            }
-        }
-    }
+	for name, value in named_char_ref_map {
+		if len(name) > longest_match_len {
+			if match(t.input, name) {
+				longest_match_len = len(name)
+				longest_match_str = value
+				longest_match_name = name
+				has_semicolon = strings.has_suffix(name, ";")
+			}
+		}
+	}
 
-    if longest_match_len > 0 {
-        for r in longest_match_name do strings.write_rune(&t.temp_buffer, r)
-        consume_n(t.input, longest_match_len)
-        return true, has_semicolon, longest_match_str
-    }
+	if longest_match_len > 0 {
+		for r in longest_match_name do strings.write_rune(&t.temp_buffer, r)
+		consume_n(t.input, longest_match_len)
+		return true, has_semicolon, longest_match_str
+	}
 
-    return false, false, ""
+	return false, false, ""
 }
 
 step_tokenizer :: proc(p: ^Parser) {
-    t := &p.tokenizer
+	t := &p.tokenizer
 	next_char := consume(t.input)
-	
+
 	is_eof := next_char == nil
 	c := next_char.? if !is_eof else 0
 
-    #partial switch t.state {
+	#partial switch t.state {
 
-    // https://html.spec.whatwg.org/multipage/parsing.html#data-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#data-state
 	case .Data:
 		if is_eof {
-            emit_eof(p)
-            return
+			emit_eof(p)
+			return
 		}
 
 		switch c {
@@ -431,10 +432,10 @@ step_tokenizer :: proc(p: ^Parser) {
 			emit_char(p, c)
 		}
 
-    // https://html.spec.whatwg.org/multipage/parsing.html#rcdata-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#rcdata-state
 	case .RCDATA:
 		if is_eof {
-            emit_eof(p)
+			emit_eof(p)
 			return
 		}
 
@@ -450,7 +451,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		case:
 			emit_char(p, c)
 		}
-    // https://html.spec.whatwg.org/multipage/parsing.html#rawtext-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#rawtext-state
 	case .RAWTEXT:
 		if is_eof {
 			emit_eof(p)
@@ -622,7 +623,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		if is_eof {
 			emit_char(p, '<')
 			emit_char(p, '/')
-			emit_temp_buffer(p) 
+			emit_temp_buffer(p)
 			t.state = .RCDATA
 			reconsume(t.input)
 			return
@@ -634,7 +635,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RCDATA
 				reconsume(t.input)
 			}
@@ -644,7 +645,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RCDATA
 				reconsume(t.input)
 			}
@@ -655,7 +656,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RCDATA
 				reconsume(t.input)
 			}
@@ -669,7 +670,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RCDATA
 				reconsume(t.input)
 			}
@@ -718,7 +719,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		if is_eof {
 			emit_char(p, '<')
 			emit_char(p, '/')
-			emit_temp_buffer(p) 
+			emit_temp_buffer(p)
 			t.state = .RAWTEXT
 			reconsume(t.input)
 			return
@@ -730,7 +731,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RAWTEXT
 				reconsume(t.input)
 			}
@@ -740,7 +741,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RAWTEXT
 				reconsume(t.input)
 			}
@@ -751,7 +752,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RAWTEXT
 				reconsume(t.input)
 			}
@@ -765,7 +766,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .RAWTEXT
 				reconsume(t.input)
 			}
@@ -818,7 +819,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		if is_eof {
 			emit_char(p, '<')
 			emit_char(p, '/')
-			emit_temp_buffer(p) 
+			emit_temp_buffer(p)
 			t.state = .ScriptData
 			reconsume(t.input)
 			return
@@ -830,7 +831,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptData
 				reconsume(t.input)
 			}
@@ -840,7 +841,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptData
 				reconsume(t.input)
 			}
@@ -851,7 +852,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptData
 				reconsume(t.input)
 			}
@@ -865,7 +866,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptData
 				reconsume(t.input)
 			}
@@ -922,8 +923,8 @@ step_tokenizer :: proc(p: ^Parser) {
 		case:
 			emit_char(p, c)
 		}
-        
-    // https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-dash-state
+
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-dash-state
 	case .ScriptDataEscapedDash:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInScriptHtmlCommentLikeText, c)
@@ -1019,7 +1020,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		if is_eof {
 			emit_char(p, '<')
 			emit_char(p, '/')
-			emit_temp_buffer(p) 
+			emit_temp_buffer(p)
 			t.state = .ScriptDataEscaped
 			reconsume(t.input)
 			return
@@ -1031,7 +1032,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptDataEscaped
 				reconsume(t.input)
 			}
@@ -1041,7 +1042,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptDataEscaped
 				reconsume(t.input)
 			}
@@ -1052,7 +1053,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptDataEscaped
 				reconsume(t.input)
 			}
@@ -1066,7 +1067,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			} else {
 				emit_char(p, '<')
 				emit_char(p, '/')
-				emit_temp_buffer(p) 
+				emit_temp_buffer(p)
 				t.state = .ScriptDataEscaped
 				reconsume(t.input)
 			}
@@ -1186,7 +1187,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			t.state = .ScriptDataDoubleEscaped
 		}
 
-    // https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escape-end-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escape-end-state
 	case .ScriptDataDoubleEscapeEnd:
 		if is_eof {
 			reconsume(t.input)
@@ -1223,7 +1224,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\x0C', ' ':
-			// Ignore
+		// Ignore
 		case '/', '>':
 			reconsume(t.input)
 			t.state = .AfterAttributeName
@@ -1277,7 +1278,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\x0C', ' ':
-			// Ignore
+		// Ignore
 		case '/':
 			t.state = .SelfClosingStartTag
 		case '=':
@@ -1300,7 +1301,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\x0C', ' ':
-			// Ignore
+		// Ignore
 		case '"':
 			t.state = .AttributeValueDoubleQuoted
 		case '\'':
@@ -1419,7 +1420,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			t.state = .BeforeAttributeName
 		}
 
-    // https://html.spec.whatwg.org/multipage/parsing.html#bogus-comment-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#bogus-comment-state
 	case .BogusComment:
 		if is_eof {
 			emit_cur_comment(p)
@@ -1437,7 +1438,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			append_to_comment_data(t, c)
 		}
 
-	// https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state 
+	// https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
 	case .MarkupDeclarationOpen:
 		if match(t.input, "--") {
 			consume_n(t.input, 2)
@@ -1447,7 +1448,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			consume_n(t.input, 7)
 			t.state = .DOCTYPE
 		} else if match(t.input, "[CDATA[") {
-            // ---TODO---
+			// ---TODO---
 		} else {
 			if t.on_error != nil do t.on_error(.IncorrectlyOpenedComment, c)
 			create_comment(t, "")
@@ -1592,7 +1593,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			t.state = .Comment
 		}
 
-    // https://html.spec.whatwg.org/multipage/parsing.html#comment-end-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#comment-end-state
 	case .CommentEnd:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInComment, 0)
@@ -1675,8 +1676,8 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\f', ' ':
-            // Ignore
-		case 'A'..='Z':
+		// Ignore
+		case 'A' ..= 'Z':
 			create_doctype_token(t)
 			append_to_doctype_name(t, c + 0x20)
 			t.state = .DOCTYPEName
@@ -1712,7 +1713,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		case '>':
 			t.state = .Data
 			emit_cur_doctype(p)
-		case 'A'..='Z':
+		case 'A' ..= 'Z':
 			append_to_doctype_name(t, c + 0x20)
 		case 0x0000:
 			if t.on_error != nil do t.on_error(.UnexpectedNullCharacter, c)
@@ -1732,7 +1733,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\f', ' ':
-			// Ignore
+		// Ignore
 		case '>':
 			t.state = .Data
 			emit_cur_doctype(p)
@@ -1794,7 +1795,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\f', ' ':
-			// Ignore
+		// Ignore
 		case '"':
 			init_doctype_public_ident(t)
 			t.state = .DOCTYPEPublicIdentifierDoubleQuoted
@@ -1861,7 +1862,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			append_to_doctype_public_ident(t, c)
 		}
 
-    // https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-public-identifier-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-public-identifier-state
 	case .AfterDOCTYPEPublicIdentifier:
 		if is_eof {
 			if t.on_error != nil do t.on_error(.EofInDOCTYPE, 0)
@@ -1902,7 +1903,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\f', ' ':
-            // Ignore
+		// Ignore
 		case '>':
 			t.state = .Data
 			emit_cur_doctype(p)
@@ -1962,7 +1963,7 @@ step_tokenizer :: proc(p: ^Parser) {
 		}
 		switch c {
 		case '\t', '\n', '\f', ' ':
-            // Ignore
+		// Ignore
 		case '"':
 			init_doctype_system_identifier(t)
 			t.state = .DOCTYPESystemIdentifierDoubleQuoted
@@ -2096,7 +2097,7 @@ step_tokenizer :: proc(p: ^Parser) {
 			t.state = .CDATASection
 		}
 
-    // https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-end-state
+	// https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-end-state
 	case .CDATASectionEnd:
 		if is_eof {
 			emit_char(p, ']')
@@ -2144,8 +2145,11 @@ step_tokenizer :: proc(p: ^Parser) {
 	case .NamedCharacterReference:
 		match_found, is_last_semicolon, matched_str := try_consume_named_char_ref(t)
 		if match_found {
-			next_c, has_next := peek(t.input).? 
-			if is_consumed_as_part_of_attr(t) && !is_last_semicolon && has_next && (next_c == '=' || utils.is_ascii_alphanum(next_c)) {
+			next_c, has_next := peek(t.input).?
+			if is_consumed_as_part_of_attr(t) &&
+			   !is_last_semicolon &&
+			   has_next &&
+			   (next_c == '=' || utils.is_ascii_alphanum(next_c)) {
 				flush_code_points_consumed_as_char_ref(p)
 				t.state = t.return_state
 			} else {
@@ -2301,33 +2305,60 @@ step_tokenizer :: proc(p: ^Parser) {
 		} else if code == 0x0D || (utils.is_control(code) && !utils.is_ascii_whitespace(code)) {
 			if t.on_error != nil do t.on_error(.ControlCharacterReference, 0)
 			switch code {
-			case 0x80: code = 0x20AC
-			case 0x82: code = 0x201A
-			case 0x83: code = 0x0192
-			case 0x84: code = 0x201E
-			case 0x85: code = 0x2026
-			case 0x86: code = 0x2020
-			case 0x87: code = 0x2021
-			case 0x88: code = 0x02C6
-			case 0x89: code = 0x2030
-			case 0x8A: code = 0x0160
-			case 0x8B: code = 0x2039
-			case 0x8C: code = 0x0152
-			case 0x8E: code = 0x017D
-			case 0x91: code = 0x2018
-			case 0x92: code = 0x2019
-			case 0x93: code = 0x201C
-			case 0x94: code = 0x201D
-			case 0x95: code = 0x2022
-			case 0x96: code = 0x2013
-			case 0x97: code = 0x2014
-			case 0x98: code = 0x02DC
-			case 0x99: code = 0x2122
-			case 0x9A: code = 0x0161
-			case 0x9B: code = 0x203A
-			case 0x9C: code = 0x0153
-			case 0x9E: code = 0x017E
-			case 0x9F: code = 0x0178
+			case 0x80:
+				code = 0x20AC
+			case 0x82:
+				code = 0x201A
+			case 0x83:
+				code = 0x0192
+			case 0x84:
+				code = 0x201E
+			case 0x85:
+				code = 0x2026
+			case 0x86:
+				code = 0x2020
+			case 0x87:
+				code = 0x2021
+			case 0x88:
+				code = 0x02C6
+			case 0x89:
+				code = 0x2030
+			case 0x8A:
+				code = 0x0160
+			case 0x8B:
+				code = 0x2039
+			case 0x8C:
+				code = 0x0152
+			case 0x8E:
+				code = 0x017D
+			case 0x91:
+				code = 0x2018
+			case 0x92:
+				code = 0x2019
+			case 0x93:
+				code = 0x201C
+			case 0x94:
+				code = 0x201D
+			case 0x95:
+				code = 0x2022
+			case 0x96:
+				code = 0x2013
+			case 0x97:
+				code = 0x2014
+			case 0x98:
+				code = 0x02DC
+			case 0x99:
+				code = 0x2122
+			case 0x9A:
+				code = 0x0161
+			case 0x9B:
+				code = 0x203A
+			case 0x9C:
+				code = 0x0153
+			case 0x9E:
+				code = 0x017E
+			case 0x9F:
+				code = 0x0178
 			}
 		}
 
@@ -2335,12 +2366,12 @@ step_tokenizer :: proc(p: ^Parser) {
 		strings.write_rune(&t.temp_buffer, rune(code))
 		flush_code_points_consumed_as_char_ref(p)
 		t.state = t.return_state
-    }
+	}
 }
 
 tokenize :: proc(p: ^Parser) {
 	for {
-        step_tokenizer(p)
+		step_tokenizer(p)
 		if p.tokenizer.pause_flag {
 			return
 		}
